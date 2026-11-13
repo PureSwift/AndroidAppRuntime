@@ -2,8 +2,10 @@ package org.pureswift.appruntime.example
 
 import android.app.Activity
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.WindowInsets
 import android.widget.ScrollView
 import android.widget.TextView
 
@@ -22,7 +24,17 @@ class ExampleAppActivity : Activity() {
             setPadding(32, 32, 32, 32)
             setText(report)
         }
-        setContentView(ScrollView(this).apply { addView(text) })
+        val scroll = ScrollView(this).apply { addView(text) }
+        // Apps targeting API 35 draw edge to edge on Android 15 and later:
+        // keep the report clear of the status and navigation bars.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            scroll.setOnApplyWindowInsetsListener { view, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                insets
+            }
+        }
+        setContentView(scroll)
     }
 
     companion object {
