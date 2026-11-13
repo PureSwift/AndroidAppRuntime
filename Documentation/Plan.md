@@ -1,6 +1,10 @@
 # Android host — Plan
 
-**Status:** phase 0 (§11) is in progress. What it found so far:
+**Status:** phase 0 (§11) is done. `ExampleApp`'s `android-arm64-v8a` slice
+runs in the emulator (API 36, arm64) from a bare Activity, and passes every
+check AppRuntime's `Packages/LinkedSlice` test makes on macOS. That covers
+calls both ways, every wire type, typed throws, identity, capabilities, and
+async tasks resumed by the clock. What phase 0 found:
 
 - **Swift 6.4.2 builds everything for Android.** The 6.4.2 Swift SDK for
   Android builds AppRuntime's host modules (`RuntimeCore`, `RuntimeNative`,
@@ -10,13 +14,27 @@
   imports only `abort`, `arc4random_buf`, `clock_gettime`, `free`,
   `malloc`, `memcmp`, `memmove`, `memset`, `posix_memalign` and `write`
   from libc, all in bionic at API 28. It links into `libExampleAppHost.so`
-  with swift-java and loads in the emulator (API 36, arm64).
-- **The 6.4.2 SDK needs NDK r29's `libc++_shared.so`.**
-  - Its runtime is built with NDK r29's clang (`r574158c`), and
-    `libswiftCore.so` uses `std::__hash_memory`, which r27's libc++ lacks.
+  with swift-java.
+- **The arm64 slice needs heap pointer tagging off.**
+  - The slice is compiled for `aarch64-unknown-linux-gnu` (AppRuntime's
+    `guest.py`, for its Embedded concurrency modules). That target's
+    Embedded stdlib keeps String's flags in a pointer's top byte.
+  - Android 11+ tags heap pointers in that byte (`0xb4…`), so the slice
+    took its own native strings for foreign ones and trapped in
+    `String.UTF8View._foreignIndex(after:)`. The full runtime is built for
+    Android, which leaves the top byte alone, so only the slice fails.
+  - With `android:allowNativeHeapPointerTagging="false"`, every check
+    passes. That flag is a workaround: the fix is a slice whose Embedded
+    stdlib is built for an Android triple (§9.1). x86_64 has no tagging.
+- **The 6.4.2 SDK needs NDK r30's `libc++_shared.so`.**
+  - Its runtime is built with NDK r30's clang (`r574158c`; r29's is
+    `r563880c`). `libswiftCore.so` uses `std::__hash_memory`, which r27's
+    and r29's libc++ lack.
   - Its setup script accepts NDK r27 anyway, so the build succeeds and the
-    library fails to load at run time.
-  - `rt_main` hasn't run on Android yet: that waits for NDK r29.
+    library fails to load at run time. `Scripts/example-app.sh` checks
+    every libc++ symbol the runtime needs when it stages the libraries.
+  - Phase 0's run used r30's `libc++_shared.so` with an r29 sysroot; NDK
+    r30 isn't installed here yet.
 - **The Swift runtime is dynamic for now** (decision 4).
   - Swift 6.4's build system passes `--static-swift-stdlib`, `-Xswiftc` and
     `-Xlinker` to the macOS builds of the package's macros too, and the
@@ -114,7 +132,7 @@ The plan builds on four existing projects:
    - The package's tools version is 6.4, and `.swift-version` pins 6.4.2,
      AppRuntime's.
    - It uses the matching Swift SDK for Android,
-     `swift-6.4.2-RELEASE_android`, set up with NDK r29 (Status above).
+     `swift-6.4.2-RELEASE_android`, set up with NDK r30 (Status above).
    - Gradle needs a JDK from 17 to 21.
    - The upstream projects build with 6.3.x today; all of them build with
      6.4.2 too.
@@ -417,15 +435,14 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 
 ### 9.1 AppRuntime
 
-1. **Run an Android slice.** No `android-*` slice has run yet.
-   - The arm64 slice is compiled for `aarch64-unknown-linux-gnu`.
-     `aarch64-linux.c` seals glibc's errno, stderr and the stack-protector
-     guard privately, so it should be libc-agnostic on bionic, but that's
-     unproven.
-   - **Phase 0 is the proof:** `ExampleApp`'s slice in a `.so` on the
-     emulator, with `rt_main` running.
-   - Check that every §7.5 symbol the slice imports exists in bionic at API
-     28. `arc4random_buf` does.
+1. **An arm64 slice that works with tagged pointers.** Phase 0 ran
+   `ExampleApp`'s slice on bionic: its libc imports are all there, and
+   `aarch64-linux.c`'s private glibc pieces don't get in the way. But the
+   slice's Embedded stdlib, built for `aarch64-unknown-linux-gnu`, keeps
+   String's flags in a pointer's top byte, which Android's heap tags use
+   (Status). `android-arm64-v8a` needs an Embedded stdlib and concurrency
+   runtime built for `aarch64-unknown-linux-android`, so the slice uses
+   Android's spare-bit masks. Until then, hosts turn tagging off.
 2. **Shared host code.** `AppInfo`, `AppHost`'s checks and `HostModule` are
    the same on every host. LinuxAppRuntime's plan put off moving them into
    AppRuntime "once a third host needs them", and this is the third host.
