@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Heap pointer tagging is off: the arm64 slice is compiled for
+         aarch64-unknown-linux-gnu, whose Embedded stdlib keeps String's flags
+         in a pointer's top byte, which Android's tagged heap pointers use
+         (Documentation/Plan.md, Status). -->
     <application
         android:label="ExampleApp"
-        android:extractNativeLibs="false">
+        android:extractNativeLibs="false"
+        android:allowNativeHeapPointerTagging="false"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity
             android:name=".ExampleAppActivity"
             android:exported="true"
