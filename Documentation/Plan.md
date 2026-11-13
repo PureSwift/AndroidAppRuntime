@@ -33,8 +33,8 @@ async tasks resumed by the clock. What phase 0 found:
   - Its setup script accepts NDK r27 anyway, so the build succeeds and the
     library fails to load at run time. `Scripts/example-app.sh` checks
     every libc++ symbol the runtime needs when it stages the libraries.
-  - Phase 0's run used r30's `libc++_shared.so` with an r29 sysroot; NDK
-    r30 isn't installed here yet.
+  - With the SDK set up with NDK r30, `Scripts/example-app.sh --run`
+    passes from a clean build.
 - **The Swift runtime is dynamic for now** (decision 4).
   - Swift 6.4's build system passes `--static-swift-stdlib`, `-Xswiftc` and
     `-Xlinker` to the macOS builds of the package's macros too, and the
