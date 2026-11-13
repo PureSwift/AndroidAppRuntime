@@ -17,8 +17,10 @@ an Android app:
 
 **Status:** phase 0 of the [plan](Documentation/Plan.md): AppRuntime's
 `ExampleApp`, from its sealed Android slice, linked into a library that a
-bare Activity loads. It builds and loads in the emulator. Running `rt_main`
-needs NDK r29 (the plan's status has the details).
+bare Activity loads. `rt_main` runs in the emulator, and every check
+passes: the same ones AppRuntime's linked-slice test makes on macOS.
+
+![ExampleApp's report in the emulator](Documentation/ExampleApp-phase0.png)
 
 It is the counterpart of
 [DarwinAppRuntime](https://github.com/PureSwift/DarwinAppRuntime) and
@@ -27,12 +29,13 @@ It is the counterpart of
 ## Building
 
 Swift 6.4 is required (`.swift-version` pins 6.4.2), with the Swift SDK
-for Android set up with NDK r29:
+for Android set up with NDK r30. Its runtime needs r30's `libc++_shared.so`,
+although its setup script accepts r27:
 
 ```sh
 swift sdk install https://download.swift.org/swift-6.4.2-release/android-sdk/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE_android.artifactbundle.tar.gz \
     --checksum 4d6ad63ea74becd58e123ff58b1b48c3be5ec0db0dff0ea5abe37ac007dd3233
-ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/29.0.14206865 \
+ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/30.0.16248370 \
     ~/Library/org.swift.swiftpm/swift-sdks/swift-6.4.2-RELEASE_android.artifactbundle/swift-android/scripts/setup-android-sdk.sh
 ```
 
@@ -40,7 +43,7 @@ Then, with an AppRuntime checkout next to this one (or `APPRUNTIME_PATH`)
 and an emulator running:
 
 ```sh
-ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/29.0.14206865 Scripts/example-app.sh --run
+ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/30.0.16248370 Scripts/example-app.sh --run
 ```
 
 The script builds `ExampleApp`'s slice with AppRuntime's `guest.py`, links it
