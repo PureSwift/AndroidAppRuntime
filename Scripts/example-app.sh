@@ -95,7 +95,8 @@ while [ ${#queue[@]} -gt 0 ]; do
     done
 done
 # The Swift SDK's runtime is built with a newer NDK than its setup script
-# requires (6.4.2's with NDK r29's clang), and needs that NDK's libc++.
+# requires (6.4.2's with NDK r30's clang, r574158c), and needs that NDK's
+# libc++.
 nm="$(dirname "$readelf")/llvm-nm"
 missing="$(comm -23 \
     <(for f in "$jnilibs"/*.so; do "$nm" -D --undefined-only "$f"; done | awk '/__ndk1/ {print $NF}' | sort -u) \
@@ -103,7 +104,7 @@ missing="$(comm -23 \
 if [ -n "$missing" ]; then
     echo "libc++_shared.so from $ndk lacks symbols the Swift runtime needs:" >&2
     echo "$missing" | head -5 | sed 's/^/  /' >&2
-    echo "Use a newer NDK (ANDROID_NDK_HOME); $swift_sdk needs NDK r29." >&2
+    echo "Use a newer NDK (ANDROID_NDK_HOME); $swift_sdk needs NDK r30." >&2
     exit 1
 fi
 
