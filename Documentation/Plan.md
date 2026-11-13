@@ -1,6 +1,36 @@
 # Android host — Plan
 
-**Status:** design only. Nothing here is implemented yet.
+**Status:** phase 0 (§11) is in progress. What it found so far:
+
+- **Swift 6.4.2 builds everything for Android.** The 6.4.2 Swift SDK for
+  Android builds AppRuntime's host modules (`RuntimeCore`, `RuntimeNative`,
+  `DynamicRuntime`, `DynamicUI`, the contract modules, `ExampleHost`),
+  swift-java and AndroidKit for `aarch64-unknown-linux-android28`.
+- **The slice fits bionic.** `ExampleApp`'s `android-arm64-v8a` slice
+  imports only `abort`, `arc4random_buf`, `clock_gettime`, `free`,
+  `malloc`, `memcmp`, `memmove`, `memset`, `posix_memalign` and `write`
+  from libc, all in bionic at API 28. It links into `libExampleAppHost.so`
+  with swift-java and loads in the emulator (API 36, arm64).
+- **The 6.4.2 SDK needs NDK r29's `libc++_shared.so`.**
+  - Its runtime is built with NDK r29's clang (`r574158c`), and
+    `libswiftCore.so` uses `std::__hash_memory`, which r27's libc++ lacks.
+  - Its setup script accepts NDK r27 anyway, so the build succeeds and the
+    library fails to load at run time.
+  - `rt_main` hasn't run on Android yet: that waits for NDK r29.
+- **The Swift runtime is dynamic for now** (decision 4).
+  - Swift 6.4's build system passes `--static-swift-stdlib`, `-Xswiftc` and
+    `-Xlinker` to the macOS builds of the package's macros too, and the
+    macro links then fail.
+  - The deprecated native build system keeps them apart, but the SDK has
+    no static `_FoundationCShims` or `_FoundationCollections`, which
+    swift-java's Foundation import needs.
+  - The APK carries the SDK's runtime libraries instead (about 15, from
+    `libswiftCore.so` to `libFoundationEssentials.so`; no ICU).
+- **The SDK's toolset already links with `-z max-page-size=16384`**, so
+  16 KB pages need nothing from the host.
+- **Gradle 8.14 needs a JDK from 17 to 21.** `java_home -v 21` falls back
+  to newer JDKs, so `Scripts/example-app.sh` checks each candidate's
+  version.
 
 This is the Android host for [AppRuntime](https://github.com/PureSwift/AppRuntime)
 apps, the counterpart of DarwinAppRuntime and LinuxAppRuntime. An AppRuntime
@@ -69,8 +99,9 @@ The plan builds on four existing projects:
 4. **One shared library per ABI.**
    - `libapp.so` contains the host's Swift modules, the runtime core and
      the app's sealed slice (or its wasm2c output).
-   - The Swift runtime is linked statically (`-static-stdlib`), so the APK
-     carries `libapp.so` and `libc++_shared.so`.
+   - The Swift runtime should be linked statically, so the APK carries
+     `libapp.so` and `libc++_shared.so`. For now it's dynamic: the SDK's
+     runtime libraries go in the APK too (Status above).
    - The host uses `FoundationEssentials` only, keeping ICU's data out of
      the APK. Formatting goes through `android.icu.text` instead (§6).
 5. **Minimum API 28 (Android 9).**
@@ -79,12 +110,14 @@ The plan builds on four existing projects:
    - The default `targetSdk` is 35.
    - AppRuntime's manifest examples say `minSDK: 26`. The packager raises
      a lower `minSDK` to 28 with a warning, and the examples change (§9.1).
-6. **Toolchain: Swift 6.4.2** (AppRuntime's `.swift-version`), with the
-   matching Swift SDK for Android.
-   - The upstream projects build with 6.3.x today, and this machine has
-     only the 6.3.3 Android SDK.
-   - Phase 0 installs the 6.4.2 SDK and builds AppRuntime's host modules,
-     swift-java and AndroidKit with it.
+6. **Toolchain: Swift 6.4 is required.**
+   - The package's tools version is 6.4, and `.swift-version` pins 6.4.2,
+     AppRuntime's.
+   - It uses the matching Swift SDK for Android,
+     `swift-6.4.2-RELEASE_android`, set up with NDK r29 (Status above).
+   - Gradle needs a JDK from 17 to 21.
+   - The upstream projects build with 6.3.x today; all of them build with
+     6.4.2 too.
 
 ## 2. Scope
 
@@ -344,11 +377,13 @@ The pipeline:
    - The packager generates a SwiftPM package that links `AndroidHostApp`
      with the slice. That is the same per-app approach as `darwin-app`, and
      it reuses the work directory between builds.
-   - It builds with `swift build --swift-sdk <arch>-unknown-linux-android28
-     -Xswiftc -static-stdlib`.
-   - Linking uses `-z max-page-size=16384`: Play requires 16 KB page
-     alignment for `targetSdk` 35 apps, and NDK r27 doesn't do it by
-     default.
+   - It builds with `swift build --swift-sdk swift-6.4.2-RELEASE_android
+     --triple <arch>-unknown-linux-android28`. Flags for the Android link
+     go in the generated package, limited to Android: Swift 6.4's build
+     system would also apply command-line flags to the macOS builds of
+     macros.
+   - The SDK's toolset links with `-z max-page-size=16384`, the 16 KB page
+     alignment Play requires for `targetSdk` 35 apps.
    - With `--engine wasm2c`, AppRuntime's `Scripts/wasm2c-shim.py build`
      makes the `libapp.a` instead.
 3. **Write `AndroidManifest.xml`.** It holds:
@@ -464,6 +499,11 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    - Link `ExampleApp`'s `android-arm64-v8a` slice into a `.so`, load it
      from a bare Activity on the emulator, and run `rt_main`.
    - This proves the slice on bionic and the 6.4.2 stack (§9.1.1).
+   - `Scripts/example-app.sh` does it: it builds the slice, links it into
+     `libExampleAppHost.so` (`Sources/ExampleAppHost`), stages the runtime
+     libraries, builds `Android/example-app`, and with `--run` starts it on
+     the emulator. It checks the report against the same lines as
+     AppRuntime's `Packages/LinkedSlice` test.
 1. **Host runtime and player.**
    - `RuntimeHost` lands in AppRuntime.
    - Build `AndroidHost`, `AndroidHostUI`, `AndroidHostApp`, the shell and
