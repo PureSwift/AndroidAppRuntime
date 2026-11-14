@@ -1,6 +1,44 @@
 # Android host — Plan
 
-**Status:** phases 0 and 1 (§11) are done.
+**Status:** phases 0, 1 and 2 (§11) are done.
+
+**Phase 2:** `android-app` packages ExampleUI's universal bundle in three
+forms, and each runs:
+- a debug APK (`android-app run` installs and starts it, and
+  `Scripts/example-ui-check.py` passes against it);
+- a signed, minified release APK, which passes the same check;
+- an App Bundle.
+
+- **Commands:** `validate`, `package` (`--release`, `--aab`, `--keystore`,
+  `--alias`), `run` (`--device`, `--replace`) and `gradle`.
+- **Signing passwords** come from `ANDROID_KEYSTORE_PASSWORD` and
+  `ANDROID_KEY_PASSWORD` when Gradle runs, never from the command line or
+  the generated project.
+- **How it differs from §8:**
+  - **No generated SwiftPM package.** The packager builds the host's own
+    `app` product with `ANDROIDAPPRUNTIME_SLICE` set, in a scratch
+    directory per app and ABI in the work directory. That's as incremental
+    as a generated package, and has one less manifest to keep in step.
+  - **No `:template` module.** The packager writes the app module itself:
+    `build.gradle.kts`, the manifest, `res/` and `assets/rt/`. It includes
+    the host's `:appruntime-ui` and `:appruntime-shell` from its checkout.
+  - **Icons:** `icon.png` goes in `mipmap-xxxhdpi` only, and Android scales
+    it down for the other densities. Adaptive icons come later.
+  - **No URL scheme filters:** AppRuntime's manifest has no URL schemes yet.
+- **What phase 2 found:**
+  - androidx's graphics library brings its own `.so` for every ABI. Without
+    `abiFilters`, an App Bundle would install on an x86 or 32-bit ARM
+    device with no `libapp.so`, so the generated build limits it to the
+    ABIs packaged.
+  - A release is minified with R8. The shell's consumer rules, which keep
+    `NativeHost` and `RenderSurface` for Swift, are enough: the release
+    APK passes the UI check.
+  - A debug run over an installed release fails on the signature, so `run`
+    explains it, and `--replace` uninstalls the release first.
+  - Sizes for ExampleUI, arm64 only: the debug APK is 83 MB (unoptimized,
+    with symbols), the release APK 55 MB, and the App Bundle 19 MB. The
+    Swift runtime libraries are most of it; linking them statically
+    (decision 4) would shrink them.
 
 **Phase 1:** AppRuntime's `ExampleUI` runs in the emulator from its universal
 bundle, in a hand-made Gradle project (`Scripts/example-ui.sh --run`). It
@@ -590,6 +628,9 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 2. **Packager.** `android-app validate`, `package` (debug APK, then signed
    release APK and AAB), `run` and `gradle`. Done when `ExampleUI` packages
    from its universal bundle and runs.
+   - Done: `Sources/AndroidPackager` and `Sources/AndroidAppTool`, with 24
+     Swift Testing tests that run the packager's steps with a fake command
+     runner.
 3. **Contracts:**
    - Bluetooth, Location, Device, Networking and Formatting;
    - then Motion and NFC.
