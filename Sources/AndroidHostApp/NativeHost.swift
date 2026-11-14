@@ -1,4 +1,12 @@
 import AndroidHost
+import AndroidHostBluetooth
+import AndroidHostDevice
+import AndroidHostFormatting
+import AndroidHostLocation
+import AndroidHostMotion
+import AndroidHostNFC
+import AndroidHostNetworking
+import AndroidHostModules
 import AndroidHostUI
 import CRuntime
 import DynamicRuntime
@@ -15,7 +23,19 @@ import Foundation
 public enum AndroidHostApp {
 
     /// Every module this host has.
-    public static let modules: [any HostModule.Type] = [AndroidHostUI.self]
+    public static let modules: [any HostModule.Type] = AndroidHostModules.all
+
+    /// Points each module at its Kotlin side, made when the app first uses it.
+    static func connectModules() {
+        AndroidPermissions.system = AndroidPermissionSystem()
+        DeviceHub.shared.makeSystem = { AndroidDeviceSystem() }
+        AndroidHostFormatting.makeSystem = { AndroidFormattingSystem() }
+        LocationHub.shared.makeSystem = { AndroidLocationSystem() }
+        NetworkHub.shared.makeSystem = { AndroidNetworkSystem() }
+        BluetoothHub.shared.makeSystem = { AndroidBluetoothSystem() }
+        NFCHub.shared.makeSystem = { AndroidNFCSystem() }
+        MotionHub.shared.makeSystem = { MotionSensors.make() }
+    }
 
     /// The app's exports, from the sealed slice linked into this library.
     static let entry = AppEntryPoints(main: rt_main, dispatch: rt_dispatch, finalize: rt_finalize)
@@ -41,6 +61,7 @@ public enum AndroidHostApp {
         }
         AndroidBundle.languages = languages
         AndroidHostUI.surface = surface
+        connectModules()
         let host = AppHost(info: info, modules: modules)
         do {
             try host.prepare()
@@ -125,6 +146,14 @@ extension NativeHost {
     public func setState(_ state: Int32) {
         guard let state = ApplicationState(rawValue: state) else { return }
         HostApplication.setState(state)
+        if state == .active {
+            // The user may have changed a permission in Settings.
+            LocationHub.shared.authorizationMayHaveChanged()
+            BluetoothHub.shared.updateAll()
+        } else {
+            // Reader mode needs the resumed Activity.
+            NFCHub.shared.appWentInactive()
+        }
     }
 
     /// An `ACTION_VIEW` intent's URL; whether the app handled it.
