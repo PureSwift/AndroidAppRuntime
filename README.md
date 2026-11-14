@@ -15,12 +15,15 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** phase 0 of the [plan](Documentation/Plan.md): AppRuntime's
-`ExampleApp`, from its sealed Android slice, linked into a library that a
-bare Activity loads. `rt_main` runs in the emulator, and every check
-passes: the same ones AppRuntime's linked-slice test makes on macOS.
+**Status:** phase 1 of the [plan](Documentation/Plan.md). AppRuntime's
+`ExampleUI` runs from its universal bundle in the emulator, rendered by
+AndroidSwiftUI's composeui. Taps, typing, the lazy list, navigation and the
+back gesture all reach the guest and come back.
 
-![ExampleApp's report in the emulator](Documentation/ExampleApp-phase0.png)
+![ExampleUI in the emulator](Documentation/ExampleUI-phase1.png)
+
+Phase 0 ran AppRuntime's `ExampleApp` from its sealed Android slice, with
+every check of AppRuntime's linked-slice test passing.
 
 It is the counterpart of
 [DarwinAppRuntime](https://github.com/PureSwift/DarwinAppRuntime) and
@@ -39,13 +42,29 @@ ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/30.0.16248370 \
     ~/Library/org.swift.swiftpm/swift-sdks/swift-6.4.2-RELEASE_android.artifactbundle/swift-android/scripts/setup-android-sdk.sh
 ```
 
-Then, with an AppRuntime checkout next to this one (or `APPRUNTIME_PATH`)
-and an emulator running:
+Then, with an emulator running and these checkouts next to this one:
+
+- AppRuntime, with its `RuntimeHost` module (or `APPRUNTIME_PATH`);
+- AndroidSwiftUI, for composeui (or `ANDROIDSWIFTUI_PATH`).
 
 ```sh
-ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/30.0.16248370 Scripts/example-app.sh --run
+Scripts/example-ui.sh --run
 ```
 
-The script builds `ExampleApp`'s slice with AppRuntime's `guest.py`, links it
-into `libExampleAppHost.so`, builds `Android/example-app` with Gradle (on a
-JDK from 17 to 21), installs it, and checks the report it logs.
+The script:
+
+- builds `ExampleUI`'s universal bundle with AppRuntime's `guest.py`;
+- links its slice into `libapp.so` with the host;
+- builds `Android/example-ui` with Gradle, on a JDK from 17 to 21;
+- installs it, and drives it with UI Automator
+  (`Scripts/example-ui-check.py`).
+
+It uses a running emulator unless `ANDROID_SERIAL` names a device.
+`Scripts/example-app.sh --run` does the same for phase 0.
+
+`swift test` runs the host's unit tests on macOS. Run the player's tests
+from `Android/`:
+
+```sh
+./gradlew :appruntime-ui:desktopTest
+```
