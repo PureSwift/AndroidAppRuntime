@@ -1,5 +1,5 @@
 {
-  "originHash" : "1c88e97b93a114ceb87392c4400ff5bcaef13429a57af4fdc1c49ca6ddc61082",
+  "originHash" : "8c7c1a65fd3803f05d64dbd6da1e395649db10c1b4da805e3ff0abda41c53bef",
   "pins" : [
     {
       "identity" : "bluetooth",
@@ -20,6 +20,15 @@
       }
     },
     {
+      "identity" : "swift-asn1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-asn1.git",
+      "state" : {
+        "revision" : "917b472dbe53ba699cbb0495f9a95a084bc6364d",
+        "version" : "1.7.4"
+      }
+    },
+    {
       "identity" : "swift-binding-generator-core",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-binding-generator-core",
@@ -35,6 +44,15 @@
       "state" : {
         "revision" : "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
         "version" : "1.6.0"
+      }
+    },
+    {
+      "identity" : "swift-crypto",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-crypto.git",
+      "state" : {
+        "revision" : "da9d28d69ebe3894b18376c8f2395c2f37b8448f",
+        "version" : "4.5.2"
       }
     },
     {
