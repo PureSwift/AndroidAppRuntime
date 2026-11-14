@@ -3,6 +3,7 @@ package org.pureswift.appruntime
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.util.Log
+import org.pureswift.appruntime.contracts.HostContext
 import org.pureswift.appruntime.ui.LazyGridView
 import org.pureswift.appruntime.ui.RenderSurface
 
@@ -15,6 +16,7 @@ open class AppRuntimeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        HostContext.application = this
         System.loadLibrary("app")
         LazyGridView.register()
     }
