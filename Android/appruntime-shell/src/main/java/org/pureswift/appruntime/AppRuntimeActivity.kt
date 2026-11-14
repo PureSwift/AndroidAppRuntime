@@ -1,0 +1,162 @@
+package org.pureswift.appruntime
+
+import android.content.Intent
+import android.content.res.Configuration
+import android.os.Build
+import android.os.Bundle
+import android.os.LocaleList
+import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.dp
+import com.pureswift.swiftui.Render
+
+/**
+ * The app's one Activity (Documentation/Plan.md §5): starts the guest with
+ * the app's keys from `assets/rt/Info.plist`, shows the renderer's surface,
+ * and reports the lifecycle, URLs and the back gesture.
+ *
+ * It declares `configChanges` for rotation, dark mode and locale, so those
+ * don't restart it; if the system recreates it anyway, the guest keeps
+ * running and the new Activity shows the same surface.
+ */
+open class AppRuntimeActivity : ComponentActivity() {
+
+    private var error: String? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        val surface = AppRuntime.surface
+        surface.dark = isDark(resources.configuration)
+        error = startApp()
+        setContent { Root(error) }
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // The guest's NavStack goes back; otherwise the system does.
+                if (!AppRuntime.surface.goBack()) {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
+        if (savedInstanceState == null) {
+            openURL(intent)
+        }
+    }
+
+    private fun startApp(): String? {
+        val info = try {
+            assets.open("rt/Info.plist").use { it.readBytes() }
+        } catch (error: java.io.IOException) {
+            return "This APK has no assets/rt/Info.plist."
+        }
+        val result = NativeHost.start(info, languages(), AppRuntime.surface)
+        if (result.isNotEmpty()) {
+            Log.e(AppRuntime.TAG, result)
+            return result
+        }
+        AppRuntime.started = true
+        return null
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Composable
+    private fun Root(error: String?) {
+        val dark = isSystemInDarkTheme()
+        val context = LocalContext.current
+        val colors = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            dark -> darkColorScheme()
+            else -> lightColorScheme()
+        }
+        MaterialTheme(colorScheme = colors) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    // accessibilityIdentifier becomes a resource ID for UI Automator.
+                    .semantics { testTagsAsResourceId = true }
+                    .safeDrawingPadding(),
+            ) {
+                if (error != null) {
+                    Text(error, modifier = Modifier.padding(24.dp))
+                } else {
+                    AppRuntime.surface.store.root?.let { Render(it) }
+                }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (AppRuntime.started) NativeHost.setState(STATE_INACTIVE)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (AppRuntime.started) NativeHost.setState(STATE_ACTIVE)
+    }
+
+    override fun onPause() {
+        if (AppRuntime.started) NativeHost.setState(STATE_INACTIVE)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        if (AppRuntime.started) NativeHost.setState(STATE_BACKGROUND)
+        super.onStop()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openURL(intent)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        AppRuntime.surface.dark = isDark(newConfig)
+        if (AppRuntime.started) NativeHost.setLanguages(languages())
+    }
+
+    private fun openURL(intent: Intent?) {
+        val url = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return
+        if (AppRuntime.started && !NativeHost.open(url)) {
+            Log.i(AppRuntime.TAG, "the app didn't open $url")
+        }
+    }
+
+    private fun isDark(configuration: Configuration): Boolean =
+        configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+
+    private fun languages(): Array<String> {
+        val locales = LocaleList.getDefault()
+        return Array(locales.size()) { locales[it].toLanguageTag() }
+    }
+
+    private companion object {
+        // ApplicationState's raw values.
+        const val STATE_ACTIVE = 0
+        const val STATE_INACTIVE = 1
+        const val STATE_BACKGROUND = 2
+    }
+}
