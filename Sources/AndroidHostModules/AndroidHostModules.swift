@@ -1,0 +1,25 @@
+@_exported import AndroidHost
+import AndroidHostBluetooth
+import AndroidHostDevice
+import AndroidHostFormatting
+import AndroidHostLocation
+import AndroidHostMotion
+import AndroidHostNFC
+import AndroidHostNetworking
+import AndroidHostUI
+
+/// Every module this host has: what `libapp.so` registers and what the
+/// packager checks apps against, from one list.
+public enum AndroidHostModules {
+
+    nonisolated(unsafe) public static let all: [any HostModule.Type] = [
+        AndroidHostUI.self,
+        AndroidHostDevice.self,
+        AndroidHostFormatting.self,
+        AndroidHostLocation.self,
+        AndroidHostNetworking.self,
+        AndroidHostBluetooth.self,
+        AndroidHostMotion.self,
+        AndroidHostNFC.self,
+    ]
+}
