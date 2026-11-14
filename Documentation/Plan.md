@@ -1,6 +1,76 @@
 # Android host — Plan
 
-**Status:** phases 0, 1 and 2 (§11) are done.
+**Status:** phases 0, 1, 2 and 3 (§11) are done.
+
+**Phase 3:** the host implements every contract module of AppRuntime:
+Device, Formatting, Location, Networking, Bluetooth (central), Motion and
+NFC (reader), and the `Permissions` built-in over runtime permissions.
+`Scripts/contracts-check.sh` packages `Examples/ContractsCheck`, a guest
+that calls them all, and its 76 checks pass on the emulator (API 36, arm64).
+
+- **How each module is built (§4):** the contract and its logic in Swift,
+  over a small protocol for what it asks Android, so 113 Swift Testing
+  tests check them on macOS against fakes. The Android calls are Kotlin
+  classes in `:appruntime-contracts`; `AndroidHostApp` binds them with
+  swift-java, and `…Natives` objects carry callbacks back, on the main
+  thread. Motion reads the NDK's sensors from Swift, on the main `ALooper`.
+- **How it differs from the plan:**
+  - **No AndroidKit or AndroidBluetooth** (§9.3). A Kotlin class per module
+    is a few hundred lines, needs no generated bindings, and keeps each
+    JNI crossing coarse. `:appruntime-contracts` replaces the planned
+    `:appruntime-callbacks`.
+  - **Motion uses the NDK headers directly** through `CAndroidHost`, not
+    swift-android-native; a C helper drains `ASensorEvent`s into plain
+    structs.
+  - **The URL contract** (`org.pureswift.network.URL`, which §6.2 missed) is
+    swift-foundation's `URL` and `URLComponents`, in Swift.
+  - **One module list:** `AndroidHostModules` is what `libapp.so` registers
+    and what the packager validates against.
+- **What the emulator check covers:**
+  - Device's facts, the battery listener (the script changes the emulator's
+    battery) and the orientation;
+  - number, date, relative and locale formatting in fixed locales;
+  - the location prompt (the script answers it), a one-shot fix and
+    updates from the emulator's GPS, and the heading;
+  - HTTPS GET, a redirect, a 100 KB upload with progress, Basic
+    authentication, a 404, an unknown host, plain HTTP refused, and a
+    cancel, against httpbin.org;
+  - the Nearby devices prompt, the powered-on state and a scan;
+  - the accelerometer, fused device motion, the barometer, and the
+    physical activity prompt;
+  - NFC records, and a session that fails with `unsupported` where there's
+    no NFC.
+- **What phase 3 found:**
+  - **Host objects come back as proxies.** An object the host hands out
+    (a peripheral, a tag, a credential) reaches the host again as a proxy
+    for its handle. `HostObjects.own` finds the object behind it, as
+    DarwinAppRuntime does; Basic authentication failed until it did.
+  - **"Asked before" means "answered".** Marking a permission as asked
+    when the prompt opened made a status read during the prompt say
+    `denied`. Android has no "not determined", so the host keeps its own
+    flag, set when the answer arrives; a dismissed prompt answers nothing.
+  - **One prompt at a time.** Android drops a permission request made
+    while another shows, so the check asks for each after the last.
+  - **Plain HTTP fails with an `IOException`** whose message names
+    cleartext, not `UnknownServiceException`; the error mapping reads the
+    message. AppRuntime's manifest has no way to allow plain HTTP for a
+    domain yet, so it's always refused on API 28+.
+  - Android's `HttpResponseCache` has no eviction: clearing it deletes it
+    and installs a new one.
+- **Not covered on the emulator:**
+  - Bluetooth connections and GATT: the emulator finds no peripherals. The
+    GATT queue, MTU exchange, notifications and errors are unit-tested;
+    they need a device and a peripheral.
+  - NFC tags, which need a device with NFC.
+  - The step counter, which the emulator lacks.
+- **Known gaps:**
+  - Cookies are in memory per session, for the default configuration too;
+    digest authentication can't be answered; `HttpURLConnection` rejects
+    `PATCH`.
+  - Background location needs a foreground service (phase 4).
+  - `retrieveConnectedPeripherals` doesn't filter by service: Android can't
+    tell without connecting.
+  - `ActivityRecognizer` is unavailable without Google Play services.
 
 **Phase 2:** `android-app` packages ExampleUI's universal bundle in three
 forms, and each runs:
@@ -284,27 +354,34 @@ AndroidKit already uses names like `AndroidLocation`, `AndroidNFC` and
 `AndroidOS`, and AndroidBluetooth is its own module, so this host prefixes
 its modules with `AndroidHost`.
 
+Each contract module is plain Swift: the contract, its mappings, and a
+small protocol for what it asks Android (`DeviceSystem`, `LocationSystem`,
+…), so `swift test` checks it on macOS against a fake. The Android calls are
+Kotlin classes in `:appruntime-contracts`, and `AndroidHostApp` binds them
+with swift-java. Motion reads the NDK's sensors from Swift, with no Kotlin.
+
 | Module | Contents |
 |---|---|
-| `AndroidHost` | `AppHost` (the checks, the built-ins, the modules, `rt_main`), `AppInfo`, `HostModule`, `MainLooper`, `MainLooperClock`, `AndroidPermissions`, `AndroidBundle`, `AndroidApplication` |
+| `AndroidHost` | `AppHost` (the checks, the built-ins, the modules, `rt_main`), `MainLooper`, `MainLooperClock`, `AndroidPermissions` (the runtime permissions of §6.1), `AndroidBundle`, `HostObjects` (a host's own objects behind the proxies the guest passes back), `HostLog` |
 | `AndroidHostUI` | The `Renderer` contract: it forwards `apply` / `replaceSubtree` bytes to Kotlin, and Kotlin's `event` / `rowCount` / `row` calls to the guest's `RendererDelegate` |
-| `AndroidHostBluetooth` | `Central`, `Peripheral`, `Service`, `Characteristic`, `Descriptor`, `Advertisement` over AndroidBluetooth |
-| `AndroidHostLocation` | `LocationManager` over `android.location` |
-| `AndroidHostDevice` | `Device` over `Build`, `BatteryManager`, `Configuration`, `Settings.Secure` |
-| `AndroidHostNetworking` | `HTTPSession` over `java.net.HttpURLConnection` |
-| `AndroidHostFormatting` | Number and date formatting over `android.icu.text` |
-| `AndroidHostMotion`, `AndroidHostNFC` | Phase 3: NDK sensors (`ASensorManager`) and `NfcAdapter` reader mode |
-| `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell. It links every module, plus `CRuntime` |
+| `AndroidHostBluetooth` | `Central`, `Peripheral`, `Service`, `Characteristic`, `Descriptor`, `Advertisement` over `BluetoothLeScanner` and `BluetoothGatt`, with the GATT queue and scan record parsing in Swift |
+| `AndroidHostLocation` | `LocationManager`, `Location`, `Heading` over `android.location` and the rotation vector sensor |
+| `AndroidHostDevice` | `Device` over `Build`, `BatteryManager`, `PowerManager`, `Configuration`, `Settings.Secure` and the sensors |
+| `AndroidHostNetworking` | `HTTPSession` and its values over `java.net.HttpURLConnection`; the URL contract over swift-foundation's `URL` |
+| `AndroidHostFormatting` | `NumberFormat`, `DateFormat` and `LocaleInfo` over `android.icu.text` |
+| `AndroidHostMotion` | `MotionManager`, `Altimeter`, `Pedometer` over the NDK's sensors (`ASensorManager`); `ActivityRecognizer` reports unavailable |
+| `AndroidHostNFC` | `NFCReader`, `NFCTag` and NDEF over `NfcAdapter` reader mode |
+| `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
+| `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
 | `AndroidPackager`, `android-app` | The packager (§8) |
 
 The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `HostContext` |
-| `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `AppRuntimeSink` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-callbacks` | The Kotlin listener adapters for each contract module; AndroidBluetooth's two adapters move here from its demo (§9.3) |
-| `:template` | The app module the packager copies and fills in (§8) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s) |
+| `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -387,12 +464,12 @@ Permissions by capability:
 
 | Contract | Android | Notes |
 |---|---|---|
-| Bluetooth `Central` and friends | `BluetoothLeScanner`, `BluetoothGatt`, through AndroidBluetooth | The `Central` contract is implemented directly over AndroidBluetooth's bindings, not over its `GATT.CentralManager` (`AndroidCentral`): that API's `async` and actor model doesn't fit a delegate contract on the main thread. GATT operations are queued per device, one at a time, as Android requires (DynamicRuntime.md's host obligations). `connectGatt(…, TRANSPORT_LE, handler)` delivers `BluetoothGattCallback` on the main looper. `Peripheral.identifier` is the MAC address. Scan modes map to `ScanSettings` (`SCAN_MODE_LOW_POWER`, `BALANCED`, `LOW_LATENCY`). The connection timeout is a main-looper timer. `GATT_*` statuses map to `BluetoothError` |
+| Bluetooth `Central` and friends | `BluetoothLeScanner`, `BluetoothGatt`, through `:appruntime-contracts` | Not over AndroidBluetooth: neither its bindings nor its `GATT.CentralManager`, whose `async` and actor model doesn't fit a delegate contract on the main thread (§9.3). GATT operations are queued per device, one at a time, as Android requires (DynamicRuntime.md's host obligations). `connectGatt(…, TRANSPORT_LE, handler)` delivers `BluetoothGattCallback` on the main looper. `Peripheral.identifier` is the MAC address. Scan modes map to `ScanSettings` (`SCAN_MODE_LOW_POWER`, `BALANCED`, `LOW_LATENCY`). The connection timeout is a main-looper timer. `GATT_*` statuses map to `BluetoothError` |
 | `LocationManager` | `android.location.LocationManager` | The fused provider when available (API 31+), otherwise GPS and network. Updates go through `requestLocationUpdates(…, Looper.getMainLooper())`. Google Play services is not used, so apps work on any device. Accuracy maps to `ACCURACY_FINE` / `ACCURACY_COARSE` and the provider choice. Full accuracy is a precise-location request on API 31+ |
-| `Device` | `Build`, `BatteryManager` (a sticky `ACTION_BATTERY_CHANGED` receiver while monitoring), `Configuration` and `Display` rotation | `vendorIdentifier` is `Settings.Secure.ANDROID_ID`, which is scoped to the app's signing key, the closest match to `identifierForVendor` |
+| `Device` | `Build`, `BatteryManager` (a sticky `ACTION_BATTERY_CHANGED` receiver while monitoring), `PowerManager`, `Configuration`, and the accelerometer and proximity sensors | `vendorIdentifier` is a name-based UUID of `Settings.Secure.ANDROID_ID`, which is scoped to the app's signing key, the closest match to `identifierForVendor`. The physical orientation comes from the accelerometer |
 | `HTTPSession` | `HttpURLConnection` on a host-owned executor | It uses the platform's TLS, proxy and network-security config. Results, redirects and challenges are posted to the main looper. A redirect asks the guest on the main thread while the worker waits, so the guest is still called synchronously |
 | Formatting | `android.icu.text.NumberFormat`, `DateFormat`, `SimpleDateFormat` (API 24+) | Formatters are cached per locale and style. ICU ships in the OS, so the APK carries no ICU data |
-| Motion (phase 3) | `ASensorManager` (NDK) through swift-android-native's `AndroidHardware` | Accelerometer, gyroscope, `TYPE_PRESSURE` for the altimeter, `TYPE_STEP_COUNTER` for the pedometer. Timestamps are already `CLOCK_BOOTTIME` nanoseconds. `ActivityRecognizer` needs Google Play services, so it reports `isAvailable == false` |
+| Motion (phase 3) | `ASensorManager` (NDK), from Swift through `CAndroidHost` | Accelerometer, gyroscope, `TYPE_PRESSURE` for the altimeter, `TYPE_STEP_COUNTER` for the pedometer. Timestamps are already `CLOCK_BOOTTIME` nanoseconds. `ActivityRecognizer` needs Google Play services, so it reports `isAvailable == false` |
 | `NFCReader` (phase 3) | `NfcAdapter.enableReaderMode` with the tag technologies requested | Reader mode needs the resumed Activity, so the reader session follows the lifecycle |
 
 ## 7. The SwiftUI player
@@ -560,6 +637,12 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 
 ### 9.3 AndroidBluetooth, AndroidKit, swift-java
 
+**Not needed after phase 3.** The contract modules call the Android SDK
+from small Kotlin classes (`:appruntime-contracts`) instead of
+AndroidBluetooth's and AndroidKit's generated bindings, so the host needs
+nothing from either, and only swift-java's core. What follows was the plan
+for using them.
+
 - **AndroidBluetooth:**
   - The Kotlin `ScanCallback` and `BluetoothGattCallback` adapters move
     from `Demo/` into a library module, so hosts can depend on them.
@@ -637,6 +720,8 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 
    Each is unit-tested through its mappings and run on the emulator where
    Android allows it.
+   - Done: every module, with 113 Swift tests in all, and
+     `Scripts/contracts-check.sh`, whose 76 checks pass on the emulator.
 4. **More:**
    - wasm2c;
    - the x86_64 and armeabi-v7a ABIs on hardware;
