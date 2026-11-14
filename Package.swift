@@ -60,6 +60,13 @@ let package = Package(
         .library(name: "app", type: .dynamic, targets: ["AndroidHostApp"]),
         .library(name: "AndroidHost", targets: ["AndroidHost"]),
         .library(name: "AndroidHostUI", targets: ["AndroidHostUI"]),
+        .library(name: "AndroidHostDevice", targets: ["AndroidHostDevice"]),
+        .library(name: "AndroidHostFormatting", targets: ["AndroidHostFormatting"]),
+        .library(name: "AndroidHostLocation", targets: ["AndroidHostLocation"]),
+        .library(name: "AndroidHostNetworking", targets: ["AndroidHostNetworking"]),
+        .library(name: "AndroidHostBluetooth", targets: ["AndroidHostBluetooth"]),
+        .library(name: "AndroidHostMotion", targets: ["AndroidHostMotion"]),
+        .library(name: "AndroidHostNFC", targets: ["AndroidHostNFC"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
         .executable(name: "android-app", targets: ["AndroidAppTool"]),
@@ -96,9 +103,54 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostDevice",
+            dependencies: ["AndroidHost", runtime("DynamicDevice")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostFormatting",
+            dependencies: ["AndroidHost", runtime("DynamicFormatting")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostLocation",
+            dependencies: ["AndroidHost", runtime("DynamicLocation")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostNetworking",
+            dependencies: ["AndroidHost", runtime("DynamicNetworking")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostBluetooth",
+            dependencies: ["AndroidHost", runtime("DynamicBluetooth")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostMotion",
+            dependencies: ["AndroidHost", "CAndroidHost", runtime("DynamicMotion")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostNFC",
+            dependencies: ["AndroidHost", runtime("DynamicNFC")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostModules",
+            dependencies: [
+                "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
+                "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
+            ],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostApp",
             dependencies: [
-                "AndroidHost", "AndroidHostUI", runtime("CRuntime"),
+                "AndroidHostModules", "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting",
+                "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
+                "AndroidHostNFC", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -107,7 +159,7 @@ let package = Package(
         .target(
             name: "AndroidPackager",
             dependencies: [
-                "AndroidHostUI", runtime("RuntimeABI"), runtime("RuntimeHost"),
+                "AndroidHostModules", runtime("RuntimeABI"), runtime("RuntimeHost"),
                 .product(name: "Crypto", package: "swift-crypto"),
             ]
         ),
@@ -127,6 +179,41 @@ let package = Package(
         .testTarget(
             name: "AndroidHostUITests",
             dependencies: ["AndroidHostUI"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostFormattingTests",
+            dependencies: ["AndroidHostFormatting"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostLocationTests",
+            dependencies: ["AndroidHostLocation"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostNetworkingTests",
+            dependencies: ["AndroidHostNetworking"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostBluetoothTests",
+            dependencies: ["AndroidHostBluetooth"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostMotionTests",
+            dependencies: ["AndroidHostMotion"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostNFCTests",
+            dependencies: ["AndroidHostNFC"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostDeviceTests",
+            dependencies: ["AndroidHostDevice"],
             swiftSettings: host
         ),
         .target(
