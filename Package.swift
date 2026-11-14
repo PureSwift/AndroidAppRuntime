@@ -32,7 +32,7 @@ func runtime(_ product: String) -> Target.Dependency {
 /// Linker flags live here, limited to Android, because Swift 6.4's build
 /// system also passes `-Xlinker`, `-Xswiftc` and `--static-swift-stdlib` to
 /// the macOS builds of the package's macros.
-let slice = ProcessInfo.processInfo.environment["ANDROIDAPPRUNTIME_SLICE"]
+let slice = ProcessInfo.processInfo.environment["ANDROIDAPPRUNTIME_SLICE"].flatMap { $0.isEmpty ? nil : $0 }
 
 /// Elsewhere there's no slice: the libraries that link one are only for
 /// Android, and leave its symbols undefined so `swift test` builds on macOS.
@@ -60,6 +60,9 @@ let package = Package(
         .library(name: "app", type: .dynamic, targets: ["AndroidHostApp"]),
         .library(name: "AndroidHost", targets: ["AndroidHost"]),
         .library(name: "AndroidHostUI", targets: ["AndroidHostUI"]),
+        // The packager, which runs on the build machine (§8).
+        .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
+        .executable(name: "android-app", targets: ["AndroidAppTool"]),
         // Phase 0: AppRuntime's ExampleApp, linked from its sealed Android
         // slice and run from a bare Activity (`Scripts/example-app.sh`).
         .library(name: "ExampleAppHost", type: .dynamic, targets: ["ExampleAppHost"]),
@@ -67,6 +70,8 @@ let package = Package(
     dependencies: [
         appRuntime,
         .package(url: "https://github.com/swiftlang/swift-java.git", branch: "main"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
     ],
     targets: [
         .target(
@@ -98,6 +103,21 @@ let package = Package(
             ],
             swiftSettings: host,
             linkerSettings: androidLinking + sliceLinking
+        ),
+        .target(
+            name: "AndroidPackager",
+            dependencies: [
+                "AndroidHostUI", runtime("RuntimeABI"), runtime("RuntimeHost"),
+                .product(name: "Crypto", package: "swift-crypto"),
+            ]
+        ),
+        .executableTarget(
+            name: "AndroidAppTool",
+            dependencies: ["AndroidPackager", .product(name: "ArgumentParser", package: "swift-argument-parser")]
+        ),
+        .testTarget(
+            name: "AndroidPackagerTests",
+            dependencies: ["AndroidPackager"]
         ),
         .testTarget(
             name: "AndroidHostTests",
