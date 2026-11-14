@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        allowNativeHeapPointerTagging: the arm64 slice's Embedded stdlib is
+        built for aarch64-unknown-linux-gnu, which keeps String's flags in a
+        pointer's top byte, where Android 11+ tags heap pointers
+        (Documentation/Plan.md §9.1).
+    -->
+    <application
+        android:name="org.pureswift.appruntime.AppRuntimeApplication"
+        android:label="ExampleUI"
+        android:extractNativeLibs="false"
+        android:allowNativeHeapPointerTagging="false"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <activity
+            android:name="org.pureswift.appruntime.AppRuntimeActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|locale|layoutDirection|density|fontScale">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
