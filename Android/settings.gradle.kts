@@ -1,5 +1,8 @@
-// The Android side of the host (Documentation/Plan.md §4). Phase 0 has one
-// module: a bare Activity that runs AppRuntime's ExampleApp.
+// The Android side of the host (Documentation/Plan.md §4):
+// - :appruntime-ui, the player: composeui and the render IR adapter;
+// - :appruntime-shell, the Application, Activity and the host's natives;
+// - :example-ui, a hand-made app for AppRuntime's ExampleUI (phase 1);
+// - :example-app, phase 0's bare Activity for ExampleApp.
 pluginManagement {
     repositories {
         google()
@@ -17,4 +20,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "AndroidAppRuntime"
+include(":appruntime-ui")
+include(":appruntime-shell")
+include(":example-ui")
 include(":example-app")
