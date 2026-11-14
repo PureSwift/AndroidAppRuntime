@@ -69,11 +69,11 @@ import Testing
     }
 
     @Test func checksContracts() throws {
-        let missing: [String: Any] = ["Name": "org.pureswift.bluetooth.Central", "Version": 1, "Kind": "contract"]
+        let missing: [String: Any] = ["Name": "org.pureswift.camera.Session", "Version": 1, "Kind": "contract"]
         let newer: [String: Any] = ["Name": "org.pureswift.ui.Renderer", "Version": 9, "Kind": "contract"]
         let info = Fixtures.info(["RTContracts": [missing, newer]])
         let errors = try validate(info).filter { $0.severity == .error }
-        #expect(errors == [.error("org.pureswift.bluetooth.Central isn't implemented on Android")])
+        #expect(errors == [.error("org.pureswift.camera.Session isn't implemented on Android")])
         let relaxed = try validate(info, allowMissing: true)
         #expect(relaxed.allSatisfy { $0.severity == .warning })
         #expect(relaxed.contains(.warning("org.pureswift.ui.Renderer is version 1 on Android; the app was built against 9")))
@@ -100,8 +100,8 @@ import Testing
     }
 
     @Test func warnsAboutCapabilitiesItDoesntServe() throws {
-        let diagnostics = try validate(Fixtures.info(["RTCapabilities": ["location", "network"]]))
-        #expect(diagnostics.contains(.warning("the app declares location, which the Android host doesn't serve yet; it gets the permissions only")))
-        #expect(!diagnostics.contains { $0.message.contains("declares network") })
+        let diagnostics = try validate(Fixtures.info(["RTCapabilities": ["camera", "location", "network"]]))
+        #expect(diagnostics.contains(.warning("the app declares camera, which the Android host doesn't serve yet; it gets the permissions only")))
+        #expect(!diagnostics.contains { $0.message.contains("declares network") || $0.message.contains("declares location") })
     }
 }
