@@ -1,10 +1,55 @@
 # Android host — Plan
 
-**Status:** phase 0 (§11) is done. `ExampleApp`'s `android-arm64-v8a` slice
-runs in the emulator (API 36, arm64) from a bare Activity, and passes every
-check AppRuntime's `Packages/LinkedSlice` test makes on macOS. That covers
-calls both ways, every wire type, typed throws, identity, capabilities, and
-async tasks resumed by the clock. What phase 0 found:
+**Status:** phases 0 and 1 (§11) are done.
+
+**Phase 1:** AppRuntime's `ExampleUI` runs in the emulator from its universal
+bundle, in a hand-made Gradle project (`Scripts/example-ui.sh --run`). It
+renders through composeui, and taps, typing, the lazy list, navigation and
+the system back gesture reach the guest and come back.
+
+- **The host:**
+  - `RuntimeHost` landed in AppRuntime (§9.1.2).
+  - `AndroidHost` has the main looper (an `eventfd` and a `timerfd` on the
+    main `ALooper`), its clock and the built-ins.
+  - `AndroidHostUI` forwards the guest's bytes; `AndroidHostApp` is
+    `libapp.so`'s natives.
+- **The player** (`:appruntime-ui`):
+  - `RenderCodec.kt` decodes the IR;
+  - `IRAdapter.kt` builds composeui's tree, with stable callback IDs;
+  - `RenderSurface.kt` keeps the guest's tree, patches subtrees, and is
+    composeui's sink.
+  - composeui's sources are compiled from an AndroidSwiftUI checkout
+    (`ANDROIDSWIFTUI_PATH`), without the jextract bridge (§9.2).
+- **The shell** (`:appruntime-shell`): `AppRuntimeApplication`,
+  `AppRuntimeActivity` and `NativeHost`.
+- **Tests:**
+  - 14 Swift Testing tests on macOS: the looper's timers, `AppHost` and the
+    renderer;
+  - 15 desktop JVM tests: the codec, the adapter, and the events callbacks
+    become;
+  - `Scripts/example-ui-check.py` drives the app with UI Automator.
+- **What phase 1 found:**
+  - composeui's tree differs from the IR in its structure, not only its
+    names. Navigation levels become screens, with toolbars and search
+    fields lifted out. A presented sheet or alert must sit on its level's
+    screen. Picker options are tagged, and colors are ARGB. The adapter
+    does all of it, so composeui is unchanged.
+  - Lazy grids aren't in composeui. `LazyGridView` fills the gap,
+    registered through composeui's `ComposableRegistry`. composeui doesn't
+    apply a registered view's modifiers, so a lazy grid's padding is lost
+    until composeui does.
+  - composeui wraps a frame's content to its size when the frame has an
+    alignment, which the IR always sends. A `Color` or `Shape` would shrink
+    to nothing, so the adapter drops the alignment for views that fill
+    their frame.
+  - `adb shell setprop log.tag.AppRuntime DEBUG` logs every tree and row
+    the guest sends, as an outline.
+
+**Phase 0:** `ExampleApp`'s `android-arm64-v8a` slice runs in the emulator
+(API 36, arm64) from a bare Activity, and passes every check AppRuntime's
+`Packages/LinkedSlice` test makes on macOS. That covers calls both ways,
+every wire type, typed throws, identity, capabilities, and async tasks
+resumed by the clock. What phase 0 found:
 
 - **Swift 6.4.2 builds everything for Android.** The 6.4.2 Swift SDK for
   Android builds AppRuntime's host modules (`RuntimeCore`, `RuntimeNative`,
@@ -446,7 +491,12 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 2. **Shared host code.** `AppInfo`, `AppHost`'s checks and `HostModule` are
    the same on every host. LinuxAppRuntime's plan put off moving them into
    AppRuntime "once a third host needs them", and this is the third host.
-   They become a `RuntimeHost` module before this host copies them.
+   - **Done:** AppRuntime's `RuntimeHost` module has `AppInfo` (which reads
+     property lists with `FoundationEssentials` too), `HostModule`,
+     permission providers, `AppEntryPoints`, `AppCompatibility` (the
+     checks), and the generic `HostPermissions` and `HostApplication`
+     built-ins. This host uses it.
+   - Darwin and Linux still have their own copies, and can move to it.
 3. **Docs and examples.**
    - DynamicRuntime.md's Android rows (§2.3, §5, §6.1, §9.4) describe a
      Swift host, with Kotlin only for the shell, the player and the
@@ -459,9 +509,13 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 
 ### 9.2 AndroidSwiftUI
 
-- `composeui` must be usable without the Swift evaluator: published as a
-  Maven artifact (GitHub Packages or `mavenLocal`), or consumed as a Gradle
-  included build of a pinned checkout.
+- `composeui` must be usable without the Swift evaluator.
+  - Its Gradle module depends on `:swiftbridge`, which runs `swift build`
+    for jextract. Only `SwiftUIHostView.kt` uses that bridge.
+  - For now `:appruntime-ui` compiles composeui's sources from a checkout,
+    leaving that file out.
+  - Better: a composeui module without the bridge, published as a Maven
+    artifact.
 - New nodes: `Grid` / `GridRow`, `SwipeActions` and `Searchable` (§7.2).
 - `SwiftBridge.sink` is global, which is fine with one renderer per
   process. Multiple scenes would need a sink per `TreeStore`.
@@ -528,6 +582,11 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    - Done when `ExampleUI` runs on the emulator from a hand-made Gradle
      project: it renders, and taps, typing, the lazy list and navigation
      reach the guest and back.
+   - `Scripts/example-ui.sh --run` does it:
+     - it builds the bundle with `guest.py`, links its slice into
+       `libapp.so`, stages the runtime and `assets/rt/Info.plist`, and
+       builds `Android/example-ui`;
+     - `Scripts/example-ui-check.py` then drives the app.
 2. **Packager.** `android-app validate`, `package` (debug APK, then signed
    release APK and AAB), `run` and `gradle`. Done when `ExampleUI` packages
    from its universal bundle and runs.
