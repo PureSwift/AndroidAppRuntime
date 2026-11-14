@@ -1,4 +1,4 @@
-import AndroidHostUI
+import AndroidHostModules
 import Foundation
 import RuntimeABI
 import RuntimeHost
@@ -6,9 +6,8 @@ import RuntimeHost
 /// What this host implements: the built-ins and its modules' contracts.
 public enum HostContracts {
 
-    /// The modules `libapp.so` registers: `AndroidHostApp.modules`, which
-    /// links the app and can't be built here.
-    nonisolated(unsafe) public static let modules: [any HostModule.Type] = [AndroidHostUI.self]
+    /// The modules `libapp.so` registers.
+    nonisolated(unsafe) public static let modules: [any HostModule.Type] = AndroidHostModules.all
 
     public static var provided: [String: ContractDescriptor] {
         AppCompatibility.providedContracts(modules)
@@ -16,7 +15,7 @@ public enum HostContracts {
 
     /// Capabilities some contract here serves. The others still get their
     /// permissions, so `Permissions` can ask for them.
-    public static let capabilities: Set<Capability> = []
+    public static let capabilities: Set<Capability> = [.bluetooth, .location, .motion, .nfc]
 
     /// Capabilities with nothing to serve: no contract needs them.
     public static let unserved: Set<Capability> = [.network, .graphics]
