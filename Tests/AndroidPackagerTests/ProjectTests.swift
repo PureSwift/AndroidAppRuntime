@@ -88,6 +88,7 @@ import Testing
         #expect(build.contains("isMinifyEnabled = true"))
         let settings = try read(root.appendingPathComponent("settings.gradle.kts"))
         #expect(settings.contains(host.appendingPathComponent("Android/appruntime-shell").path))
+        #expect(settings.contains(host.appendingPathComponent("Android/appruntime-contracts").path))
         for path in ["gradlew", "gradle/wrapper/gradle-wrapper.properties", "build.gradle.kts", "app/src/main/AndroidManifest.xml",
                      "app/src/main/res/values/strings.xml", "app/src/main/res/values-es/strings.xml",
                      "app/src/main/res/mipmap-xxxhdpi/ic_launcher.png", "app/src/main/assets/rt/Info.plist",
