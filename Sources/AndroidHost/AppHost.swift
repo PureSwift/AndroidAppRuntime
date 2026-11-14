@@ -61,8 +61,13 @@ public final class AppHost {
 
     // MARK: Built-ins
 
+    /// Runtime permissions for the capabilities in §6.1's table, then each
+    /// module's own providers.
     private func registerBuiltins() {
         var providers: [Capability: any PermissionProvider] = [:]
+        if let system = AndroidPermissions.system {
+            providers = AndroidPermissions.providers(api: system.apiLevel)
+        }
         for module in modules {
             providers.merge(module.permissionProviders()) { _, module in module }
         }
