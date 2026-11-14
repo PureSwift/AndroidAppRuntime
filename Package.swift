@@ -25,14 +25,19 @@ func runtime(_ product: String) -> Target.Dependency {
     .product(name: product, package: "AppRuntime")
 }
 
-/// The app's library for `ExampleAppHost`: the sealed `libapp.a` for the ABI
-/// being built (`Scripts/example-app.sh` sets it). It defines `rt_main`,
+/// The app's library for `app` and `ExampleAppHost`: the sealed `libapp.a`
+/// for the ABI being built (the scripts set it). It defines `rt_main`,
 /// `rt_dispatch` and `rt_finalize`.
 ///
 /// Linker flags live here, limited to Android, because Swift 6.4's build
 /// system also passes `-Xlinker`, `-Xswiftc` and `--static-swift-stdlib` to
 /// the macOS builds of the package's macros.
 let slice = ProcessInfo.processInfo.environment["ANDROIDAPPRUNTIME_SLICE"]
+
+/// Elsewhere there's no slice: the libraries that link one are only for
+/// Android, and leave its symbols undefined so `swift test` builds on macOS.
+let sliceLinking: [LinkerSetting] = (slice.map { [.unsafeFlags([$0], .when(platforms: [.android]))] } ?? [])
+    + [.unsafeFlags(["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"], .when(platforms: [.macOS]))]
 
 /// The Swift SDK for Android's toolset already links with
 /// `-z max-page-size=16384`: Google Play requires 16 KB pages for apps
@@ -50,6 +55,11 @@ let package = Package(
         .macOS(.v13),
     ],
     products: [
+        // The host, with the app's slice linked in: the shell loads
+        // `libapp.so` (§4).
+        .library(name: "app", type: .dynamic, targets: ["AndroidHostApp"]),
+        .library(name: "AndroidHost", targets: ["AndroidHost"]),
+        .library(name: "AndroidHostUI", targets: ["AndroidHostUI"]),
         // Phase 0: AppRuntime's ExampleApp, linked from its sealed Android
         // slice and run from a bare Activity (`Scripts/example-app.sh`).
         .library(name: "ExampleAppHost", type: .dynamic, targets: ["ExampleAppHost"]),
@@ -60,6 +70,46 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "CAndroidHost",
+            linkerSettings: [
+                .linkedLibrary("android", .when(platforms: [.android])),
+                .linkedLibrary("log", .when(platforms: [.android])),
+            ]
+        ),
+        .target(
+            name: "AndroidHost",
+            dependencies: [
+                "CAndroidHost",
+                runtime("RuntimeABI"), runtime("RuntimeCore"), runtime("RuntimeNative"),
+                runtime("DynamicRuntime"), runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostUI",
+            dependencies: ["AndroidHost", runtime("DynamicUI")],
+            swiftSettings: host
+        ),
+        .target(
+            name: "AndroidHostApp",
+            dependencies: [
+                "AndroidHost", "AndroidHostUI", runtime("CRuntime"),
+                .product(name: "SwiftJavaStatic", package: "swift-java"),
+            ],
+            swiftSettings: host,
+            linkerSettings: androidLinking + sliceLinking
+        ),
+        .testTarget(
+            name: "AndroidHostTests",
+            dependencies: ["AndroidHost"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostUITests",
+            dependencies: ["AndroidHostUI"],
+            swiftSettings: host
+        ),
+        .target(
             name: "ExampleAppHost",
             dependencies: [
                 runtime("CRuntime"), runtime("RuntimeCore"), runtime("RuntimeNative"),
@@ -67,7 +117,7 @@ let package = Package(
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
-            linkerSettings: androidLinking + (slice.map { [.unsafeFlags([$0], .when(platforms: [.android]))] } ?? [])
+            linkerSettings: androidLinking + sliceLinking
         ),
     ]
 )
