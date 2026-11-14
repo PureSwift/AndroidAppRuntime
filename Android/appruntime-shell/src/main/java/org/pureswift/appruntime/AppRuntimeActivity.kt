@@ -29,6 +29,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.pureswift.swiftui.Render
+import org.pureswift.appruntime.contracts.HostContext
+import org.pureswift.appruntime.contracts.PermissionSystem
 
 /**
  * The app's one Activity (Documentation/Plan.md §5): starts the guest with
@@ -46,6 +48,7 @@ open class AppRuntimeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        HostContext.activity = this
         val surface = AppRuntime.surface
         surface.dark = isDark(resources.configuration)
         error = startApp()
@@ -125,6 +128,18 @@ open class AppRuntimeActivity : ComponentActivity() {
     override fun onStop() {
         if (AppRuntime.started) NativeHost.setState(STATE_BACKGROUND)
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        if (HostContext.activity === this) HostContext.activity = null
+        super.onDestroy()
+    }
+
+    @Deprecated("The permission requests use ActivityCompat")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        @Suppress("DEPRECATION")
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (AppRuntime.started) PermissionSystem.deliver(requestCode, permissions, grantResults)
     }
 
     override fun onNewIntent(intent: Intent) {
