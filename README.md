@@ -15,7 +15,9 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** phase 1 of the [plan](Documentation/Plan.md). AppRuntime's
+**Status:** phase 2 of the [plan](Documentation/Plan.md): `android-app`
+packages a universal bundle as a debug APK, or as a signed release APK or
+App Bundle. Before that, in phase 1: AppRuntime's
 `ExampleUI` runs from its universal bundle in the emulator, rendered by
 AndroidSwiftUI's composeui. Taps, typing, the lazy list, navigation and the
 back gesture all reach the guest and come back.
@@ -62,7 +64,38 @@ The script:
 It uses a running emulator unless `ANDROID_SERIAL` names a device.
 `Scripts/example-app.sh --run` does the same for phase 0.
 
-`swift test` runs the host's unit tests on macOS. Run the player's tests
+## Packaging
+
+`android-app` turns a universal bundle from AppRuntime's `guest.py bundle`
+into an Android app:
+
+```sh
+swift run android-app validate App.app
+```
+
+```sh
+swift run android-app run App.app
+```
+
+```sh
+ANDROID_KEYSTORE_PASSWORD=… swift run android-app package App.app --aab --keystore release.jks --alias release
+```
+
+- `validate` checks the app against this host: its keys, its contracts and
+  its slices.
+- `run` builds a debug APK, installs it on a running emulator (or
+  `--device`), and starts it.
+- `package` builds a debug APK, or a signed release with `--release` or
+  `--aab`. Release passwords come from `ANDROID_KEYSTORE_PASSWORD` and
+  `ANDROID_KEY_PASSWORD`.
+- `gradle` writes the app's Gradle project, for Android Studio.
+
+Each ABI the bundle has is built, unless `--abi` picks some. The work goes
+in `.build/android-app/<identifier>/`.
+
+## Tests
+
+`swift test` runs the host's and the packager's unit tests on macOS. Run the player's tests
 from `Android/`:
 
 ```sh
