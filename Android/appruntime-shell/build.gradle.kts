@@ -1,6 +1,6 @@
 // The shell (Documentation/Plan.md §4): the Application that loads
 // libapp.so, the Activity that starts the guest and shows the player, and
-// the host's natives.
+// the host's natives. It brings the player and the contracts' Android side.
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -33,5 +33,6 @@ kotlin {
 
 dependencies {
     api(project(":appruntime-ui"))
+    api(project(":appruntime-contracts"))
     api("androidx.activity:activity-compose:1.10.1")
 }
