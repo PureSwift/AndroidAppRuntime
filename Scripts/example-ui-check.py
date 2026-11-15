@@ -2,7 +2,9 @@
 """Drives ExampleUI on the connected emulator or device, as a user would
 (Documentation/Plan.md §10): it finds views with UI Automator's dump, taps
 and types with `adb shell input`, and checks that each action reached the
-guest and came back as an update. Takes a screenshot of each screen.
+guest and came back as an update: taps, typing, the lazy list, navigation,
+the About sheet's grid, and a row's swipe actions. Takes a screenshot of
+each screen.
 
     Scripts/example-ui-check.py [--adb PATH] [--screens DIR] [--accessibility]
 
@@ -65,6 +67,7 @@ class Device:
                 "id": node.get("resource-id", "").split("/")[-1],
                 "class": node.get("class", ""),
                 "center": ((left + right) // 2, (top + bottom) // 2),
+                "left": left,
             })
         return found
 
@@ -260,6 +263,44 @@ def main():
         device.shell("input", "keyevent", "KEYCODE_BACK")
         device.expect(device.find(identifier="greeting") is not None, "back pops to the list")
         device.screenshot("back")
+
+    # The About sheet's grid: each column lines up.
+    about = device.find(text="About")
+    if about:
+        device.tap(about)
+        tab = device.find(text="About", last=True)
+        if tab:
+            device.tap(tab)
+        cells = {name: device.find(text=name) for name in ("Frontend", "Renderer", "DynamicSwiftUI", "SwiftUI")}
+        if all(cells.values()):
+            device.expect(cells["Frontend"]["left"] == cells["Renderer"]["left"]
+                          and cells["DynamicSwiftUI"]["left"] == cells["SwiftUI"]["left"]
+                          and cells["DynamicSwiftUI"]["left"] > cells["Frontend"]["left"],
+                          "the grid lines up its columns")
+        else:
+            device.expect(False, "the About sheet shows its grid")
+        device.screenshot("grid")
+        done = device.find(text="Done")
+        if done:
+            device.tap(done)
+        else:
+            device.shell("input", "keyevent", "KEYCODE_BACK")
+
+    # Swipe actions: a swipe reveals Cherry's Delete, which removes it. The
+    # action is hidden from the accessibility tree (TalkBack offers it on
+    # the row), so the tap goes where it shows, at the row's trailing edge.
+    cherry = device.find(text="Cherry", last=True)
+    if cherry:
+        x, y = cherry["center"]
+        width = int(re.findall(r"(\d+)x(\d+)", device.run("shell", "wm", "size", capture=True).decode())[-1][0])
+        device.shell("input", "swipe", str(width * 5 // 6), str(y), str(width // 2), str(y), "400")
+        time.sleep(1)
+        device.screenshot("swipe")
+        device.shell("input", "tap", str(width - width // 12), str(y))
+        deadline = time.time() + 10
+        while time.time() < deadline and any(node["text"] == "Cherry" for node in device.nodes()):
+            time.sleep(0.5)
+        device.expect(not any(node["text"] == "Cherry" for node in device.nodes()), "swiping Cherry and tapping Delete removes it")
 
     print("PASS: ExampleUI" if not device.failures else f"FAIL: ExampleUI, {len(device.failures)} failed")
     return 0 if not device.failures else 1
