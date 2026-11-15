@@ -83,11 +83,36 @@ import Testing
         let wrong = try validate(slices: [.arm64: 62])
         #expect(wrong.contains(.error("android-arm64-v8a slice: objects are for ELF machine [62], not 183 (aarch64)")))
         let missing = try validate(abis: [.arm64, .x86_64])
-        #expect(missing.contains(.error("the bundle has no android-x86_64 slice")))
+        #expect(missing.contains(.error("the bundle has no android-x86_64 slice, and no App.wasm for wasm2c")))
         let none = try validate(slices: [:], abis: [])
         #expect(none.contains { $0.message.hasPrefix("the bundle has no Android slices") })
         let untested = try validate(slices: [.armv7: 40], abis: [.armv7])
         #expect(untested.contains(.warning("armeabi-v7a isn't tested on hardware yet")))
+    }
+
+    @Test func choosesAnEngine() throws {
+        let url = Fixtures.bundle(in: directory, wasm: true)
+        let bundle = try UniversalBundle(url: url)
+        #expect(bundle.engine(for: .arm64) == .native)
+        #expect(bundle.engine(for: .x86_64) == .wasm2c)
+        #expect(bundle.engine(for: .arm64, preferred: .wasm2c) == .wasm2c)
+        #expect(bundle.defaultABIs() == [.arm64])
+        #expect(bundle.defaultABIs(engine: .wasm2c) == [.arm64, .x86_64])
+        var validator = Validator(bundle: bundle, abis: [.arm64, .x86_64])
+        let automatic = validator.validate()
+        #expect(automatic.contains(.warning("the bundle has no android-x86_64 slice; App.wasm is translated with wasm2c")))
+        #expect(automatic.allSatisfy { $0.severity == .warning })
+        validator.engine = .native
+        #expect(validator.validate().contains(.error("the bundle has no android-x86_64 slice; App.wasm can stand in with --engine wasm2c")))
+        validator.engine = .wasm2c
+        #expect(validator.validate().allSatisfy { $0.severity == .warning && !$0.message.contains("wasm2c") })
+    }
+
+    @Test func readsWasmSections() {
+        let sections = WasmModule.customSections(Fixtures.wasm(sections: ["rt.abi": [1, 0, 0, 0], "name": [9]]))
+        #expect(sections == ["rt.abi": Data([1, 0, 0, 0]), "name": Data([9])])
+        #expect(WasmModule.customSections(Data("not wasm".utf8)).isEmpty)
+        #expect(WasmModule.customSections(Data([0, 0x61, 0x73, 0x6D, 1, 0, 0, 0, 0, 0x7F])).isEmpty, "a truncated section")
     }
 
     @Test func checksIntegrity() throws {
