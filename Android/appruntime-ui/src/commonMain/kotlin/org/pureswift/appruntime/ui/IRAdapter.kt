@@ -97,8 +97,7 @@ data class ListRevision(val list: Long, val revision: Long)
  * - a presented `Sheet` or `Alert` is lifted onto its level's screen, where
  *   composeui presents it;
  * - colors become ARGB, from names in light or dark;
- * - `Picker` options get tags, `SwipeActions` become a long-press menu, and
- *   `Grid` becomes stacks.
+ * - `Picker` options get tags.
  */
 class IRAdapter(var dark: Boolean = false) {
 
@@ -119,8 +118,6 @@ class IRAdapter(var dark: Boolean = false) {
     private var search: JsonArray? = null
     /** The `Refreshable` wrapping the node being converted. */
     private var refreshable: Long? = null
-    /** The enclosing `Grid`'s horizontal spacing, for its rows. */
-    private var gridSpacing: Double? = null
 
     /** The whole tree: a new set of callbacks, pruning the last tree's. */
     fun adaptRoot(root: IRNode): ViewNode {
@@ -234,7 +231,11 @@ class IRAdapter(var dark: Boolean = false) {
             "Picker" -> picker(n, mods)
             "List" -> list(n, mods)
             "Section" -> node("Section", "header" to n["header"].string?.let(::str), "footer" to n["footer"].string?.let(::str))
-            "SwipeActions" -> node("ContextMenu", "contentCount" to num(1))
+            "SwipeActions" -> node(
+                "SwipeActions",
+                "edge" to n["edge"].string?.let(::str),
+                "allowsFullSwipe" to n["allowsFullSwipe"].bool?.let { str(it.toString()) },
+            )
             "ContextMenu" -> node("ContextMenu", "contentCount" to num(1))
             "DisclosureGroup" -> {
                 val expanded = n["isExpanded"].bool ?: false
@@ -246,17 +247,13 @@ class IRAdapter(var dark: Boolean = false) {
                 )
             }
             "LazyVGrid", "LazyHGrid" -> grid(n, mods)
-            "Grid" -> {
-                val saved = gridSpacing
-                gridSpacing = n["horizontalSpacing"].double
-                val children = convertAll(n.children)
-                gridSpacing = saved
-                ViewNode("VStack", id, obj(
-                    "alignment" to str(n["horizontal"].string ?: "center"),
-                    "spacing" to num(n["verticalSpacing"].double ?: 8.0),
-                ), mods, children)
-            }
-            "GridRow" -> node("HStack", "alignment" to n["alignment"].string?.let(::str), "spacing" to num(gridSpacing ?: 8.0))
+            "Grid" -> node(
+                "Grid",
+                "horizontal" to n["horizontal"].string?.let(::str),
+                "horizontalSpacing" to n["horizontalSpacing"].double?.let(::num),
+                "verticalSpacing" to n["verticalSpacing"].double?.let(::num),
+            )
+            "GridRow" -> node("GridRow", "alignment" to n["alignment"].string?.let(::str))
             "NavStack" -> navigation(n, mods)
             "NavLevel", "Tab" -> node("VStack", "alignment" to str("leading"), "spacing" to num(0.0))
             "ToolbarItem" -> node("HStack")
