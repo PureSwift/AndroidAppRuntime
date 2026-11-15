@@ -1,6 +1,64 @@
 # Android host — Plan
 
-**Status:** phases 0, 1, 2 and 3 (§11) are done.
+**Status:** phases 0 to 3 (§11) are done, and phase 4 is done but for two
+things: running the x86_64 and armeabi-v7a ABIs on hardware, and composeui's
+new nodes, which are in review upstream.
+
+**Phase 4:**
+
+- **wasm2c.** `android-app` can make an ABI's library from `App.wasm`
+  instead of a slice (`--engine wasm2c`, and by default for an ABI without
+  a slice).
+  - The packager runs WABT's `wasm2c` and AppRuntime's shim, compiles them
+    with the NDK's clang, and seals the result like a slice, with
+    `ld.lld` and `llvm-objcopy`. It then links it into `libapp.so` as it
+    links a slice (§9.1.6).
+  - ContractsCheck's 76 checks pass from its `App.wasm` on the emulator.
+  - The translated code keeps the guest in its linear memory, so an
+    arm64 APK without a native slice keeps heap pointer tagging on.
+- **Background location.** The host's foreground service (`HostService`)
+  runs while a `LocationManager` updates with background updates on and
+  `authorizedAlways`, with a notification.
+  - The packager declares the service, `FOREGROUND_SERVICE` and
+    `FOREGROUND_SERVICE_LOCATION` for `location(.always)`.
+  - ContractsCheck now has an `App.swift` manifest that declares it. The
+    script picks "Allow all the time" in Settings, checks the service runs,
+    sends the app to the background, and moves the GPS: the update
+    arrives. All 78 checks pass.
+  - Android lets an app start a foreground service only from the
+    foreground, so it starts when the guest asks for background updates,
+    not when the app leaves.
+- **Background Bluetooth** uses the same service while a peripheral is
+  connected, but runs only for a bundle whose `RTCapabilityOptions`
+  declares it, which AppRuntime's manifest can't write yet (§9.1.5). It's
+  unit-tested only.
+- **Images from the bundle.** The packager copies `resources/**` images
+  into `res/drawable-*`: 1x as `mdpi` (a point per pixel, as on iOS), `@2x`
+  as `xhdpi` and `@3x` as `xxhdpi`, named `rt_` plus the name made safe.
+  The adapter maps `Image(name)` the same way, so composeui finds them with
+  Android's own density selection. TalkBack says the original name, once
+  composeui has its `label` (§9.2).
+- **TalkBack checks.** `Scripts/example-ui.sh --run --accessibility`
+  audits each screen's accessibility tree as TalkBack merges it:
+  - every control has something to say;
+  - no control sits inside another one the same size;
+  - touch targets are at least 48 dp;
+  - images have descriptions.
+
+  It found that each swipeable list row was two TalkBack stops: the
+  context menu standing in for swipe actions made a second clickable node.
+  The fix is in composeui. With that branch, both screens pass; on
+  composeui's `master`, the list doesn't.
+- **composeui's nodes:** `Grid`/`GridRow` and `SwipeActions`, and the fixes
+  above, in [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78).
+  - On the emulator, with the adapter mapping to them, a swipe reveals a
+    row's Delete and runs it, and the About sheet's grid lines up its
+    columns.
+  - The adapter switches to them once the PR merges (§9.2).
+- **Not done: the ABIs on hardware.** The phone at hand is arm64-only,
+  with no 32-bit support, and the Mac can't run x86_64 emulator images.
+  wasm2c makes both ABIs from `App.wasm`, so the remaining work is a run on
+  each.
 
 **Phase 3:** the host implements every contract module of AppRuntime:
 Device, Formatting, Location, Networking, Bluetooth (central), Motion and
@@ -602,7 +660,9 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    String's flags in a pointer's top byte, which Android's heap tags use
    (Status). `android-arm64-v8a` needs an Embedded stdlib and concurrency
    runtime built for `aarch64-unknown-linux-android`, so the slice uses
-   Android's spare-bit masks. Until then, hosts turn tagging off.
+   Android's spare-bit masks. Until then, hosts turn tagging off. An app
+   packaged with the wasm2c engine doesn't need it: the packager turns
+   tagging off only when the APK has a native arm64 slice.
 2. **Shared host code.** `AppInfo`, `AppHost`'s checks and `HostModule` are
    the same on every host. LinuxAppRuntime's plan put off moving them into
    AppRuntime "once a third host needs them", and this is the third host.
@@ -621,6 +681,17 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    `DynamicRuntime` and the contract modules for
    `aarch64-unknown-linux-android28` and `x86_64-unknown-linux-android28`,
    in AppRuntime's CI.
+5. **Background Bluetooth in the manifest.** `AppManifest` can declare
+   `location(.always)`, but has no option for Bluetooth in the background.
+   This host already runs its foreground service for connected
+   peripherals when the bundle's `RTCapabilityOptions` has
+   `bluetooth: background = true`; `.bluetooth(usage:background:)` would
+   write it.
+6. **wasm2c for cross-compiled targets.** `wasm2c-shim.py build` compiles
+   for Apple and Linux hosts only, so the Android packager runs `wasm2c`
+   and the shim's `shim` command itself, and compiles and seals with the
+   NDK. A `--cc`, `--ld` and `--objcopy` for `build` would let it use the
+   shim's build.
 
 ### 9.2 AndroidSwiftUI
 
@@ -631,7 +702,16 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
     leaving that file out.
   - Better: a composeui module without the bridge, published as a Maven
     artifact.
-- New nodes: `Grid` / `GridRow`, `SwipeActions` and `Searchable` (§7.2).
+- New nodes: `Grid` / `GridRow` and `SwipeActions` (§7.2). `Searchable`
+  needs no node: composeui's `NavStack` already renders the adapter's
+  search fields.
+  - **In review:** [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78)
+    adds `Grid`, `GridRow` and `SwipeActions`, applies a registered view's
+    modifiers (the lazy grid's padding), gives `Image` a `label`, and keeps
+    `ContextMenu` to one TalkBack stop with its items as custom actions.
+  - Once it merges, the adapter maps `Grid`, `GridRow` and `SwipeActions`
+    to the new nodes instead of stacks and a context menu; until then it
+    keeps those workarounds, so this host works with composeui's `master`.
 - `SwiftBridge.sink` is global, which is fine with one renderer per
   process. Multiple scenes would need a sink per `TreeStore`.
 
@@ -729,6 +809,8 @@ for using them.
    - images from the bundle;
    - TalkBack checks;
    - background location and Bluetooth (foreground services).
+   - Done, but for the ABIs on hardware: no x86_64 or 32-bit ARM device was
+     at hand (Status). composeui's nodes are in review upstream (§9.2).
 
 ## 12. Open questions
 
