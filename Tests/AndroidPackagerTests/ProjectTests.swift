@@ -30,6 +30,7 @@ import Testing
             "android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.BLUETOOTH_SCAN",
             "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH", "android.permission.BLUETOOTH_ADMIN",
             "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
+            "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION",
         ])
         // Location for every API, since the app uses it; not only to scan.
         #expect(writer.permissions.first { $0.name == "android.permission.ACCESS_FINE_LOCATION" }?.maxSDK == nil)
@@ -44,6 +45,33 @@ import Testing
         #expect(manifest.contains("org.pureswift.appruntime.AppRuntimeActivity"))
         #expect(manifest.contains(#"android:allowNativeHeapPointerTagging="false""#))
         #expect(!manifest.contains("android:icon"))
+    }
+
+    @Test func declaresTheForegroundServiceForBackgroundWork() throws {
+        let plain = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["location", "bluetooth"]])))
+        #expect(plain.foregroundServiceTypes.isEmpty)
+        #expect(!plain.manifest.contains("HostService"))
+        #expect(!plain.permissions.contains { $0.name.hasPrefix("android.permission.FOREGROUND_SERVICE") })
+        let info = Fixtures.info([
+            "RTCapabilities": ["location", "bluetooth"],
+            "RTCapabilityOptions": ["location": ["access": "always"], "bluetooth": ["background": "true"]],
+        ])
+        var writer = ManifestWriter(bundle: try bundle(info))
+        #expect(writer.foregroundServiceTypes == ["location", "connectedDevice"])
+        #expect(writer.permissions.map(\.name).suffix(3) == [
+            "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION",
+            "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE",
+        ])
+        #expect(writer.manifest.contains(#"android:foregroundServiceType="location|connectedDevice""#))
+        // wasm2c's code needs no tagging workaround.
+        writer.hasNativeARM64Slice = false
+        #expect(writer.manifest.contains(#"android:allowNativeHeapPointerTagging="true""#))
+        #expect(!writer.manifest.contains("String's flags"))
+        for manifest in [writer.manifest, plain.manifest] {
+            let document = try XMLDocument(xmlString: manifest)
+            #expect(try document.nodes(forXPath: "/manifest/application/activity").count == 1)
+        }
+        #expect(try XMLDocument(xmlString: writer.manifest).nodes(forXPath: "/manifest/application/service").count == 1)
     }
 
     @Test func scansForBluetoothWithLocationOnOlderAPIsOnly() throws {
@@ -96,6 +124,25 @@ import Testing
             #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path), "\(path)")
         }
         #expect(try read(root.appendingPathComponent("app/src/main/AndroidManifest.xml")).contains(#"android:icon="@mipmap/ic_launcher""#))
+    }
+
+    @Test func makesTheAppsImagesDrawables() throws {
+        let url = Fixtures.bundle(in: directory)
+        for path in ["Logo.png", "Logo@2x.png", "Logo@3x.png", "icons/Star-Filled.JPG", "icons/star_filled.jpg", "notes.txt", "es.lproj/Logo.png"] {
+            directory.write(Data([0x89]), to: "Weather.app/resources/\(path)")
+        }
+        #expect(ImageResources.resourceName("Logo") == "rt_logo")
+        #expect(ImageResources.resourceName("Star-Filled.png") == "rt_star_filled")
+        #expect(ImageResources.resourceName("Ünïcode 2") == "rt__n_code_2")
+        let project = GradleProject(directory: directory.url.appendingPathComponent("project"),
+                                    hostPackage: Fixtures.hostPackage(in: directory), bundle: try UniversalBundle(url: url), abis: [.arm64])
+        let warnings = try project.write()
+        #expect(warnings == ["star_filled.jpg and Star-Filled.JPG are both the drawable rt_star_filled; the first is used"])
+        let res = project.directory.appendingPathComponent("app/src/main/res")
+        for file in ["drawable-mdpi/rt_logo.png", "drawable-xhdpi/rt_logo.png", "drawable-xxhdpi/rt_logo.png", "drawable-mdpi/rt_star_filled.jpg"] {
+            #expect(FileManager.default.fileExists(atPath: res.appendingPathComponent(file).path), "\(file)")
+        }
+        #expect(!FileManager.default.fileExists(atPath: res.appendingPathComponent("drawable-mdpi/rt_notes.txt").path))
     }
 
     @Test func rewritesResourcesTheAppDropped() throws {
@@ -196,6 +243,48 @@ import Testing
         #expect(runner.environments[runner.commands.firstIndex(of: build)!]["ANDROIDAPPRUNTIME_SLICE"]
                 == url.appendingPathComponent("lib/android-arm64-v8a/libapp.a").path)
         #expect(FileManager.default.fileExists(atPath: project.jniLibs.appendingPathComponent("arm64-v8a/libswiftCore.so").path))
+    }
+
+    @Test func translatesAppWasmForAnABIWithoutASlice() throws {
+        let host = Fixtures.hostPackage(in: directory)
+        let url = Fixtures.bundle(in: directory, slices: [.arm64: 183], wasm: true)
+        var options = Packager.Options(abis: [.x86_64], hostPackage: host, androidSwiftUI: directory.url,
+                                       workRoot: directory.url.appendingPathComponent("work"))
+        let runner = libraryTools()
+        let tools = runner.answer
+        let bin = directory.url.appendingPathComponent("bin")
+        directory.write("app", to: "bin/libapp.so")
+        runner.answer = { (arguments: [String]) throws(PackagerError) -> String in
+            if arguments.first == "swift" {
+                return arguments.contains("--show-bin-path") ? "\(bin.path)\n" : ""
+            }
+            return arguments.first?.hasSuffix("llvm-readelf") == true || arguments.contains("--undefined-only")
+                || arguments.first?.hasSuffix("llvm-nm") == true ? try tools(arguments) : ""
+        }
+        var packager = Packager(bundle: try UniversalBundle(url: url), options: options, toolchain: toolchain(), runner: runner)
+        #expect(throws: PackagerError.self, "wasm2c needs AppRuntime's shim") {
+            try packager.buildLibrary(.x86_64)
+        }
+        options.appRuntime = directory.url.appendingPathComponent("AppRuntime")
+        packager.options = options
+        var wasm2c = Wasm2c(appRuntime: options.appRuntime!, toolchain: packager.toolchain)
+        wasm2c.wabt = .init(wasm2c: URL(fileURLWithPath: "/wabt/bin/wasm2c"), runtime: URL(fileURLWithPath: "/wabt/share/wabt/wasm2c"),
+                            include: URL(fileURLWithPath: "/wabt/include"))
+        let work = directory.url.appendingPathComponent("work/wasm2c")
+        let archive = try wasm2c.build(try #require(packager.bundle.wasm), abi: .x86_64, in: work, runner: runner)
+        #expect(archive == work.appendingPathComponent("libapp.a"))
+        let tools0 = runner.commands.map { URL(fileURLWithPath: $0[0]).lastPathComponent }
+        #expect(tools0 == ["wasm2c", "python3", "clang", "clang", "clang", "clang", "ld.lld", "llvm-objcopy", "llvm-ar"])
+        let compile = try #require(runner.commands.first { $0[0].hasSuffix("clang") })
+        #expect(compile.contains("--target=x86_64-linux-android28"))
+        #expect(compile.contains("-DWASM_RT_SKIP_SIGNAL_RECOVERY=1"))
+        #expect(compile.contains("/wabt/include"))
+        let objcopy = try #require(runner.commands.first { $0[0].hasSuffix("llvm-objcopy") })
+        #expect(objcopy.filter { $0.hasPrefix("--keep-global-symbol=") }.count == 3)
+        #expect(objcopy.contains { $0.hasPrefix("--add-section=.rt_abi=") })
+        #expect(objcopy.contains { $0.hasPrefix("--add-section=.rt_contracts=") })
+        #expect(!objcopy.contains { $0.hasPrefix("--add-section=.rt_manifest=") }, "the module has no manifest section")
+        #expect(AndroidABI.armv7.clangTarget == "armv7a-linux-androideabi28")
     }
 
     @Test func refusesToPackageWhatFailsValidation() throws {
