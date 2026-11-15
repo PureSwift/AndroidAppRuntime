@@ -1,8 +1,7 @@
 # Android host — Plan
 
-**Status:** phases 0 to 3 (§11) are done, and phase 4 is done but for two
-things: running the x86_64 and armeabi-v7a ABIs on hardware, and composeui's
-new nodes, which are in review upstream.
+**Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
+armeabi-v7a ABIs on hardware.
 
 **Phase 4:**
 
@@ -37,7 +36,7 @@ new nodes, which are in review upstream.
   as `xhdpi` and `@3x` as `xxhdpi`, named `rt_` plus the name made safe.
   The adapter maps `Image(name)` the same way, so composeui finds them with
   Android's own density selection. TalkBack says the original name, once
-  composeui has its `label` (§9.2).
+  composeui uses its `label` (§9.2).
 - **TalkBack checks.** `Scripts/example-ui.sh --run --accessibility`
   audits each screen's accessibility tree as TalkBack merges it:
   - every control has something to say;
@@ -47,14 +46,14 @@ new nodes, which are in review upstream.
 
   It found that each swipeable list row was two TalkBack stops: the
   context menu standing in for swipe actions made a second clickable node.
-  The fix is in composeui. With that branch, both screens pass; on
-  composeui's `master`, the list doesn't.
+  The fix is in composeui, and both screens now pass.
 - **composeui's nodes:** `Grid`/`GridRow` and `SwipeActions`, and the fixes
-  above, in [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78).
-  - On the emulator, with the adapter mapping to them, a swipe reveals a
-    row's Delete and runs it, and the About sheet's grid lines up its
+  above, came in [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78).
+  - The adapter maps `Grid`, `GridRow` and `SwipeActions` to them, in
+    place of stacks and a context menu.
+  - ExampleUI's check now also swipes a row and taps its Delete, which
+    removes it, and checks that the About sheet's grid lines up its
     columns.
-  - The adapter switches to them once the PR merges (§9.2).
 - **Not done: the ABIs on hardware.** The phone at hand is arm64-only,
   with no 32-bit support, and the Mac can't run x86_64 emulator images.
   wasm2c makes both ABIs from `App.wasm`, so the remaining work is a run on
@@ -575,9 +574,9 @@ props, and a few nodes need work in composeui itself:
 | `NavStack`, `NavLevel`, `ToolbarItem` | `NavStack` with a `titles` prop and `onPop` | The adapter flattens the levels. System back (predictive back on API 33+) sends `pop` |
 | `Sheet`, `Alert` (`style: dialog`) | `Sheet`, `Alert`, `ConfirmationDialog` | Dismissal sends `change(false)` |
 | `Tab` | Children of `TabView` | Title and `systemImage` become the tab item |
-| `Grid`, `GridRow` | — | Add to composeui (a `Row` per `GridRow`, columns sized to the widest cell) |
-| `SwipeActions` | — | Add to composeui (`SwipeToDismissBox`), or a long-press menu at first |
-| `Searchable` | — | Add to composeui (Material 3 `SearchBar`) |
+| `Grid`, `GridRow` | `Grid`, `GridRow` | Columns sized to the widest cell (added in phase 4) |
+| `SwipeActions` | `SwipeActions` | Drag to reveal the actions; TalkBack offers them on the row (added in phase 4) |
+| `Searchable` | `NavStack`'s `searches` | The adapter lifts each level's field onto its screen |
 | Unknown types and modifiers | `EmptyView` | Logged once per type: the vocabulary is add-only |
 
 Modifiers map one to one: `padding`, `frame`, `offset`, `background`,
@@ -705,13 +704,12 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 - New nodes: `Grid` / `GridRow` and `SwipeActions` (§7.2). `Searchable`
   needs no node: composeui's `NavStack` already renders the adapter's
   search fields.
-  - **In review:** [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78)
-    adds `Grid`, `GridRow` and `SwipeActions`, applies a registered view's
+  - **Done:** [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78)
+    added `Grid`, `GridRow` and `SwipeActions`, applies a registered view's
     modifiers (the lazy grid's padding), gives `Image` a `label`, and keeps
     `ContextMenu` to one TalkBack stop with its items as custom actions.
-  - Once it merges, the adapter maps `Grid`, `GridRow` and `SwipeActions`
-    to the new nodes instead of stacks and a context menu; until then it
-    keeps those workarounds, so this host works with composeui's `master`.
+    The adapter uses them, so this host needs composeui from that merge
+    on.
 - `SwiftBridge.sink` is global, which is fine with one renderer per
   process. Multiple scenes would need a sink per `TreeStore`.
 
@@ -810,7 +808,7 @@ for using them.
    - TalkBack checks;
    - background location and Bluetooth (foreground services).
    - Done, but for the ABIs on hardware: no x86_64 or 32-bit ARM device was
-     at hand (Status). composeui's nodes are in review upstream (§9.2).
+     at hand (Status).
 
 ## 12. Open questions
 
