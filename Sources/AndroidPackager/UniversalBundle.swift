@@ -96,6 +96,28 @@ public struct UniversalBundle {
         existing("wasm32/App.wasm")
     }
 
+    /// How `abi`'s library is made: `preferred` when given, otherwise the
+    /// slice if there is one, then `App.wasm` through wasm2c. Nil if the
+    /// bundle has neither.
+    public func engine(for abi: AndroidABI, preferred: Engine? = nil) -> Engine? {
+        if let preferred {
+            return preferred
+        }
+        if slice(abi) != nil {
+            return .native
+        }
+        return wasm != nil ? .wasm2c : nil
+    }
+
+    /// The ABIs to package when none are asked for: those with slices, or
+    /// the tested ones when only `App.wasm` can make them.
+    public func defaultABIs(engine: Engine? = nil) -> [AndroidABI] {
+        if engine != .wasm2c, !abis.isEmpty {
+            return abis
+        }
+        return wasm != nil ? AndroidABI.allCases.filter(\.isSupported) : abis
+    }
+
     public var icon: URL? {
         existing("icon.png")
     }
