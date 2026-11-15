@@ -28,6 +28,7 @@ public enum AndroidHostApp {
     /// Points each module at its Kotlin side, made when the app first uses it.
     static func connectModules() {
         AndroidPermissions.system = AndroidPermissionSystem()
+        HostBackground.system = JavaBackgroundSystem()
         DeviceHub.shared.makeSystem = { AndroidDeviceSystem() }
         AndroidHostFormatting.makeSystem = { AndroidFormattingSystem() }
         LocationHub.shared.makeSystem = { AndroidLocationSystem() }
