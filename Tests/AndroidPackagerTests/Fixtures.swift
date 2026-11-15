@@ -68,14 +68,27 @@ enum Fixtures {
         return Data("!<arch>\n".utf8) + Data(header.utf8) + Data(object)
     }
 
-    /// Writes a bundle into `directory`; with `sign`, a CodeResources that
-    /// matches it.
+    /// A wasm module with only custom sections.
+    static func wasm(sections: [String: [UInt8]]) -> Data {
+        var bytes: [UInt8] = [0, 0x61, 0x73, 0x6D, 1, 0, 0, 0]
+        for (name, contents) in sections.sorted(by: { $0.key < $1.key }) {
+            let body = [UInt8(name.utf8.count)] + Array(name.utf8) + contents
+            bytes += [0, UInt8(body.count)] + body
+        }
+        return Data(bytes)
+    }
+
+    /// Writes a bundle into `directory`; with `wasm`, an `App.wasm`; with
+    /// `sign`, a CodeResources that matches it.
     static func bundle(in directory: TemporaryDirectory, info: [String: Any] = Fixtures.info(),
-                       slices: [AndroidABI: UInt16] = [.arm64: 183], icon: Bool = false,
+                       slices: [AndroidABI: UInt16] = [.arm64: 183], icon: Bool = false, wasm: Bool = false,
                        names: [String: String] = [:], sign: Bool = false) -> URL {
         let root = "Weather.app"
         var info = info
         directory.write(try! PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0), to: "\(root)/Info.plist")
+        if wasm {
+            directory.write(Self.wasm(sections: ["rt.abi": [1, 0, 0, 0], "rt.contracts": [2]]), to: "\(root)/wasm32/App.wasm")
+        }
         for (abi, machine) in slices {
             directory.write(archive(machine: machine), to: "\(root)/lib/\(abi.target)/libapp.a")
         }
