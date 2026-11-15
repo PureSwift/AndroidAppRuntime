@@ -4,10 +4,15 @@
 and types with `adb shell input`, and checks that each action reached the
 guest and came back as an update. Takes a screenshot of each screen.
 
-    Scripts/example-ui-check.py [--adb PATH] [--screens DIR]
+    Scripts/example-ui-check.py [--adb PATH] [--screens DIR] [--accessibility]
 
 Views are found by their text, or by their accessibilityIdentifier, which
 the player turns into a resource ID.
+
+With --accessibility it also audits each screen for TalkBack, from the
+same dump, as TalkBack merges it: every control has something to say, no
+control sits inside another one the same size (TalkBack would stop on it
+twice), touch targets are at least 48 dp, and images have descriptions.
 """
 
 import argparse
@@ -90,6 +95,72 @@ class Device:
                         return inner["text"]
         return None
 
+    def tree(self):
+        """UI Automator's dump."""
+        for _ in range(5):
+            self.shell("uiautomator", "dump", "/sdcard/window.xml")
+            try:
+                return ElementTree.fromstring(self.run("exec-out", "cat", "/sdcard/window.xml", capture=True))
+            except ElementTree.ParseError:
+                time.sleep(0.5)
+        raise RuntimeError("UI Automator's dump didn't parse")
+
+    def density(self):
+        """Pixels per dp."""
+        output = self.run("shell", "wm", "density", capture=True).decode()
+        values = re.findall(r"density: (\d+)", output)
+        return int(values[-1]) / 160 if values else 1
+
+    def audit(self, screen):
+        """TalkBack's problems on the screen, as messages."""
+        tree = self.tree()
+        density = self.density()
+        problems = []
+
+        def bounds(node):
+            values = re.findall(r"\d+", node.get("bounds", ""))
+            return tuple(map(int, values)) if len(values) == 4 else None
+
+        def spoken(node):
+            """What TalkBack says for a control: its own text and
+            description, or its descendants' (Compose merges them)."""
+            words = [node.get("text", ""), node.get("content-desc", "")]
+            for child in node.iter("node"):
+                if child is not node:
+                    words += [child.get("text", ""), child.get("content-desc", "")]
+            return " ".join(word for word in words if word).strip()
+
+        def visit(node, clickable_ancestors):
+            box = bounds(node)
+            clickable = node.get("clickable") == "true" and node.get("enabled") != "false"
+            name = node.get("class", "").split(".")[-1]
+            if clickable and box:
+                label = spoken(node)
+                where = label or f"the {name} at {box}"
+                if not label:
+                    problems.append(f"{screen}: a control with nothing to say, {where}")
+                if any(box == ancestor for ancestor in clickable_ancestors):
+                    problems.append(f"{screen}: TalkBack stops twice on {where!r}: a control inside another the same size")
+                width, height = (box[2] - box[0]) / density, (box[3] - box[1]) / density
+                if name != "EditText" and (width < 47.5 or height < 47.5):
+                    problems.append(f"{screen}: {where!r} is {width:.0f}×{height:.0f} dp, under 48 dp")
+            if name == "ImageView" and not node.get("content-desc") and not clickable_ancestors:
+                problems.append(f"{screen}: an image with no description at {box}")
+            ancestors = clickable_ancestors + [box] if clickable and box else clickable_ancestors
+            for child in node.findall("node"):
+                visit(child, ancestors)
+
+        for root in tree.findall("node"):
+            visit(root, [])
+        return problems
+
+    def check_accessibility(self, screen):
+        problems = self.audit(screen)
+        for problem in problems:
+            self.expect(False, problem)
+        if not problems:
+            self.expect(True, f"{screen}: TalkBack has a label for each control, stops once on each, and targets are 48 dp")
+
     def tap(self, node):
         x, y = node["center"]
         self.shell("input", "tap", str(x), str(y))
@@ -123,6 +194,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--screens")
+    parser.add_argument("--accessibility", action="store_true", help="audit each screen for TalkBack")
     options = parser.parse_args()
     device = Device(options.adb, options.screens)
 
@@ -169,6 +241,8 @@ def main():
     # The picker has the same names, above the list: the rows are the lowest.
     rows = [device.find(text=name, timeout=5, last=True) for name in ("Apple", "Banana", "Cherry")]
     device.expect(all(rows), "the lazy list shows Apple, Banana and Cherry")
+    if options.accessibility:
+        device.check_accessibility("the list")
 
     # Navigation: a row pushes a level, its button reaches the guest, and
     # the system back gesture pops it.
@@ -178,6 +252,8 @@ def main():
         like = device.find(text="Like (0)")
         device.expect(like is not None, "tapping Banana pushes its detail")
         device.screenshot("detail")
+        if options.accessibility:
+            device.check_accessibility("the detail")
         if like:
             device.tap(like)
             device.expect(device.find(text="Like (1)") is not None, "Like counts in the detail")
