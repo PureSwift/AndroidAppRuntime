@@ -18,6 +18,10 @@ public struct Packager {
         public var androidSwiftUI: URL
         /// `.build/android-app` in the current directory by default.
         public var workRoot: URL
+        /// `--engine`; nil chooses per ABI: the slice, else wasm2c.
+        public var engine: Engine?
+        /// AppRuntime's checkout, for the wasm2c engine's shim.
+        public var appRuntime: URL?
 
         public init(abis: [AndroidABI], hostPackage: URL, androidSwiftUI: URL,
                     workRoot: URL = URL(fileURLWithPath: ".build/android-app")) {
@@ -57,26 +61,30 @@ public struct Packager {
     }
 
     public var project: GradleProject {
-        GradleProject(directory: work.appendingPathComponent("gradle"), hostPackage: options.hostPackage,
-                      bundle: bundle, abis: options.abis, signing: options.signing)
+        var project = GradleProject(directory: work.appendingPathComponent("gradle"), hostPackage: options.hostPackage,
+                                    bundle: bundle, abis: options.abis, signing: options.signing)
+        project.hasNativeARM64Slice = options.abis.contains(.arm64)
+            && bundle.engine(for: .arm64, preferred: options.engine) == .native
+        return project
     }
 
     public func validate() -> [Diagnostic] {
         var validator = Validator(bundle: bundle, abis: options.abis)
         validator.allowMissingContracts = options.allowMissingContracts
+        validator.engine = options.engine
         return validator.validate()
     }
 
     /// Validates, builds the libraries and writes the Gradle project, ready
     /// for Gradle or Android Studio.
     public func prepare() throws(PackagerError) -> (GradleProject, [Diagnostic]) {
-        let diagnostics = validate()
+        var diagnostics = validate()
         let errors = diagnostics.filter { $0.severity == .error }
         guard errors.isEmpty else {
             throw PackagerError(errors.map(\.description).joined(separator: "\n"))
         }
         let project = self.project
-        try project.write()
+        diagnostics += try project.write().map(Diagnostic.warning)
         for abi in options.abis {
             let library = try buildLibrary(abi)
             try toolchain.stage(library, abi: abi, into: project.jniLibs.appendingPathComponent(abi.rawValue), runner: runner)
@@ -107,15 +115,39 @@ public struct Packager {
         return Result(artifact: destination, project: project.directory, diagnostics: diagnostics)
     }
 
-    /// Builds the host's `libapp.so` for `abi` with the bundle's slice; its
-    /// path. Each ABI has its own scratch directory in the work directory.
-    func buildLibrary(_ abi: AndroidABI) throws(PackagerError) -> URL {
-        guard let slice = bundle.slice(abi) else {
-            throw PackagerError("the bundle has no \(abi.target) slice")
+    /// The `libapp.a` for `abi`: the bundle's slice, or `App.wasm` through
+    /// wasm2c, in `<work>/wasm2c/<abi>`.
+    func appLibrary(_ abi: AndroidABI) throws(PackagerError) -> (URL, Engine) {
+        switch bundle.engine(for: abi, preferred: options.engine) {
+        case .native:
+            guard let slice = bundle.slice(abi) else {
+                throw PackagerError("the bundle has no \(abi.target) slice")
+            }
+            return (slice, .native)
+        case .wasm2c:
+            guard let wasm = bundle.wasm else {
+                throw PackagerError("the bundle has no wasm32/App.wasm for wasm2c")
+            }
+            guard let appRuntime = options.appRuntime else {
+                throw PackagerError("wasm2c needs AppRuntime's checkout for its shim; pass --appruntime or set APPRUNTIME_PATH")
+            }
+            let library = try Wasm2c(appRuntime: appRuntime, toolchain: toolchain)
+                .build(wasm, abi: abi, in: work.appendingPathComponent("wasm2c/\(abi.rawValue)"), runner: runner)
+            return (library, .wasm2c)
+        case nil:
+            throw PackagerError("the bundle has no \(abi.target) slice, and no App.wasm for wasm2c")
         }
+    }
+
+    /// Builds the host's `libapp.so` for `abi` with the app's library; its
+    /// path. Each ABI and engine has its own scratch directory in the work
+    /// directory.
+    func buildLibrary(_ abi: AndroidABI) throws(PackagerError) -> URL {
+        let (slice, engine) = try appLibrary(abi)
         let configuration = options.output == .debugAPK ? "debug" : "release"
+        let scratch = engine == .native ? abi.rawValue : "\(abi.rawValue)-\(engine.rawValue)"
         let arguments = ["swift", "build", "--package-path", options.hostPackage.path,
-                         "--scratch-path", work.appendingPathComponent("swift/\(abi.rawValue)").path,
+                         "--scratch-path", work.appendingPathComponent("swift/\(scratch)").path,
                          "--swift-sdk", toolchain.swiftSDK, "--triple", abi.triple,
                          "-c", configuration, "--product", "app"]
         // The host package links the slice when this is set.
@@ -202,6 +234,19 @@ public enum Checkouts {
             }
         }
         throw PackagerError("can't find AndroidAppRuntime's source; pass --host-package or set ANDROIDAPPRUNTIME_PATH")
+    }
+
+    /// AppRuntime's checkout, for the wasm2c shim: `--appruntime`, then
+    /// `APPRUNTIME_PATH`, then one next to the host's, then the host's
+    /// resolved dependency. Nil if there's none.
+    public static func appRuntime(_ explicit: String? = nil, hostPackage: URL) -> URL? {
+        let candidates = [explicit, ProcessInfo.processInfo.environment["APPRUNTIME_PATH"]].compactMap { $0 }
+            .map { URL(fileURLWithPath: $0) }
+            + [hostPackage.deletingLastPathComponent().appendingPathComponent("AppRuntime"),
+               hostPackage.appendingPathComponent(".build/checkouts/AppRuntime")]
+        return candidates.first {
+            FileManager.default.fileExists(atPath: $0.appendingPathComponent("Scripts/wasm2c-shim.py").path)
+        }?.standardizedFileURL
     }
 
     /// AndroidSwiftUI's checkout, for composeui: `--androidswiftui`, then
