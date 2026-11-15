@@ -165,7 +165,13 @@ class IRAdapter(var dark: Boolean = false) {
 
         return when (n.type) {
             "Text" -> node("Text", "text" to str(n["text"].string ?: ""))
-            "Image" -> node("Image", "systemName" to n["systemName"].string?.let(::str), "name" to n["name"].string?.let(::str))
+            // A bundle image is the packager's drawable; TalkBack says its own name.
+            "Image" -> node(
+                "Image",
+                "systemName" to n["systemName"].string?.let(::str),
+                "name" to n["name"].string?.let { str(drawableName(it)) },
+                "label" to n["name"].string?.let(::str),
+            )
             "Label" -> node("Label", children = listOf(
                 ViewNode("Image", "$id:icon", obj("systemName" to str(n["systemImage"].string ?: ""))),
                 ViewNode("Text", "$id:title", obj("text" to str(n["title"].string ?: ""))),
@@ -603,3 +609,15 @@ internal fun bool(value: Boolean) = JsonPrimitive(value)
 /** Props without the absent ones. */
 internal fun obj(vararg props: Pair<String, JsonElement?>): JsonObject =
     JsonObject(props.mapNotNull { (key, value) -> value?.let { key to it } }.toMap())
+
+/**
+ * The drawable the packager makes of a bundle image (Swift's
+ * `ImageResources.resourceName`): `rt_`, then the name without its image
+ * extension, lowercased, with anything but `[a-z0-9_]` as `_`.
+ */
+fun drawableName(name: String): String {
+    val extensions = setOf("png", "jpg", "jpeg", "webp", "gif")
+    val dot = name.lastIndexOf('.')
+    val base = if (dot > 0 && name.substring(dot + 1).lowercase() in extensions) name.substring(0, dot) else name
+    return "rt_" + base.lowercase().map { if (it in 'a'..'z' || it in '0'..'9' || it == '_') it else '_' }.joinToString("")
+}
