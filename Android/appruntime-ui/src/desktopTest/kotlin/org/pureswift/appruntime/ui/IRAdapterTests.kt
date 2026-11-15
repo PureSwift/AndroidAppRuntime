@@ -72,6 +72,20 @@ class IRAdapterTests {
     }
 
     @Test
+    fun namesBundleImagesAsThePackagerDoes() {
+        val root = show(IRNode("VStack", 1, children = listOf(
+            IRNode("Image", 2, mapOf("name" to IRValue.Str("Star-Filled.png"))),
+            IRNode("Image", 3, mapOf("systemName" to IRValue.Str("star"))),
+        )))
+        assertEquals("rt_star_filled", (root.find("2")!!.props["name"] as JsonPrimitive).content)
+        assertEquals("Star-Filled.png", (root.find("2")!!.props["label"] as JsonPrimitive).content)
+        assertEquals("star", (root.find("3")!!.props["systemName"] as JsonPrimitive).content)
+        assertEquals("rt_logo", drawableName("Logo"))
+        assertEquals("rt_my_logo_v2", drawableName("My Logo v2.webp"))
+        assertEquals("rt_archive_tar", drawableName("archive.tar"))
+    }
+
+    @Test
     fun keepsCallbackIDsAcrossUpdates() {
         val tree = IRNode("VStack", 1, children = listOf(button(2, "+"), text(3, "0")))
         val first = show(tree)
