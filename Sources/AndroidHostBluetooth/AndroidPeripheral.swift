@@ -8,6 +8,8 @@ import DynamicRuntime
 /// them, and every call gets exactly one delegate callback, also when the
 /// connection goes (`notConnected`). On connecting it asks for the largest
 /// MTU before telling the central, so writes can be long from the start.
+/// While connected it holds the host's foreground service, which runs for
+/// apps that declare Bluetooth in the background (`HostBackground`).
 public final class AndroidPeripheral: Peripheral {
 
     let address: String
@@ -66,6 +68,7 @@ public final class AndroidPeripheral: Peripheral {
 
     /// Lets the connection go with its central.
     func release() {
+        HostBackground.set(.bluetooth, false, for: self)
         if let timeout {
             MainLooper.shared.cancel(timeout)
             self.timeout = nil
@@ -194,6 +197,7 @@ public final class AndroidPeripheral: Peripheral {
                 self.timeout = nil
             }
             peripheralState = .connected
+            HostBackground.set(.bluetooth, true, for: self)
             central?.didConnect(self)
         }
         runNext()
