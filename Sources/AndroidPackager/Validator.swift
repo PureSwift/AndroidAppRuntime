@@ -35,6 +35,9 @@ public struct Validator {
 
     public var provided: [String: ContractDescriptor] = HostContracts.provided
 
+    /// `--engine`; nil chooses per ABI (`UniversalBundle.engine`).
+    public var engine: Engine?
+
     public init(bundle: UniversalBundle, abis: [AndroidABI]) {
         self.bundle = bundle
         self.abis = abis
@@ -83,18 +86,31 @@ public struct Validator {
         }
 
         if abis.isEmpty {
-            diagnostics.append(.error("the bundle has no Android slices; build it with guest.py bundle --target android"))
+            diagnostics.append(.error("the bundle has no Android slices or App.wasm; build it with guest.py bundle --target android"))
         }
         for abi in abis {
-            guard let slice = bundle.slice(abi) else {
-                diagnostics.append(.error("the bundle has no \(abi.target) slice"))
-                continue
-            }
-            for problem in SliceInspector.problems(slice, abi: abi) {
-                diagnostics.append(.error("\(abi.target) slice: \(problem)"))
-            }
             if !abi.isSupported {
                 diagnostics.append(.warning("\(abi.rawValue) isn't tested on hardware yet"))
+            }
+            switch bundle.engine(for: abi, preferred: engine) {
+            case .native:
+                guard let slice = bundle.slice(abi) else {
+                    diagnostics.append(.error("the bundle has no \(abi.target) slice; App.wasm can stand in with --engine wasm2c"))
+                    continue
+                }
+                for problem in SliceInspector.problems(slice, abi: abi) {
+                    diagnostics.append(.error("\(abi.target) slice: \(problem)"))
+                }
+            case .wasm2c:
+                guard bundle.wasm != nil else {
+                    diagnostics.append(.error("the bundle has no wasm32/App.wasm for wasm2c"))
+                    continue
+                }
+                if engine == nil {
+                    diagnostics.append(.warning("the bundle has no \(abi.target) slice; App.wasm is translated with wasm2c"))
+                }
+            case nil:
+                diagnostics.append(.error("the bundle has no \(abi.target) slice, and no App.wasm for wasm2c"))
             }
         }
 
