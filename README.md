@@ -52,7 +52,9 @@ ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/30.0.16248370 \
 Then, with an emulator running and these checkouts next to this one:
 
 - AppRuntime, with its `RuntimeHost` module (or `APPRUNTIME_PATH`);
-- AndroidSwiftUI, for composeui (or `ANDROIDSWIFTUI_PATH`).
+- AndroidSwiftUI, for composeui (or `ANDROIDSWIFTUI_PATH`), from
+  [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78)'s
+  merge on, for its `Grid` and `SwipeActions`.
 
 ```sh
 Scripts/example-ui.sh --run
@@ -64,7 +66,8 @@ The script:
 - links its slice into `libapp.so` with the host;
 - builds `Android/example-ui` with Gradle, on a JDK from 17 to 21;
 - installs it, and drives it with UI Automator
-  (`Scripts/example-ui-check.py`).
+  (`Scripts/example-ui-check.py`): taps, typing, the lazy list,
+  navigation, the About sheet's grid, and a row's swipe-to-delete.
 
 It uses a running emulator unless `ANDROID_SERIAL` names a device. With
 `--accessibility`, the check also audits each screen for TalkBack: every
