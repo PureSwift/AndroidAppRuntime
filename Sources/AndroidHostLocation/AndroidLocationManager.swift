@@ -14,8 +14,10 @@ import DynamicRuntime
 ///   otherwise GPS and network, on the main looper.
 /// - **Heading** is the rotation vector sensor's azimuth; true north once a
 ///   location is known.
-/// - **Background updates** need a foreground service, which comes later
-///   (phase 4): while the app is in the background Android throttles them.
+/// - **Background updates** run in the host's foreground service
+///   (`HostBackground`), with a notification, while updates run with
+///   background updates on and `authorizedAlways`; without it Android
+///   throttles them in the background.
 public final class AndroidLocationManager: LocationManager {
 
     let hub: LocationHub
@@ -63,6 +65,7 @@ public final class AndroidLocationManager: LocationManager {
     }
 
     deinit {
+        HostBackground.set(.location, false, for: self)
         if running != nil {
             source.stop()
         }
@@ -180,6 +183,14 @@ public final class AndroidLocationManager: LocationManager {
         if enabled, hub.authorization.0 != .authorizedAlways {
             delegate.didFail(self, error: LocationError.backgroundNotAllowed.rawValue)
         }
+        updateBackgroundWork()
+    }
+
+    /// The foreground service runs while this manager updates in the
+    /// background with authorization to.
+    func updateBackgroundWork() {
+        let wanted = backgroundUpdates && running != nil && hub.authorization.0 == .authorizedAlways
+        HostBackground.set(.location, wanted, for: self)
     }
 
     // MARK: Updates
@@ -237,6 +248,7 @@ public final class AndroidLocationManager: LocationManager {
         }
         if source.start(plan) {
             running = plan
+            updateBackgroundWork()
         } else {
             running = nil
             stop(failing: .denied)
@@ -248,6 +260,7 @@ public final class AndroidLocationManager: LocationManager {
             source.stop()
             running = nil
         }
+        updateBackgroundWork()
     }
 
     /// Stops updates and the one-shot request, and tells the delegate.
