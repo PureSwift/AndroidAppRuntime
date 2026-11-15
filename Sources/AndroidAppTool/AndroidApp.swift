@@ -32,11 +32,25 @@ struct BundleOptions: ParsableArguments {
     @Option(name: .customLong("androidswiftui"), help: "AndroidSwiftUI's checkout, for composeui; ANDROIDSWIFTUI_PATH, or one next to the host's.")
     var androidSwiftUI: String?
 
+    @Option(help: "native (the bundle's slice) or wasm2c (App.wasm translated to C); the slice, else wasm2c, by default.")
+    var engine: String?
+
+    @Option(name: .customLong("appruntime"), help: "AppRuntime's checkout, for the wasm2c shim; APPRUNTIME_PATH, or one next to the host's.")
+    var appRuntime: String?
+
     @Option(help: "The work directory for builds and Gradle projects.")
     var work = ".build/android-app"
 
     @Flag(name: .shortAndLong, help: "Show the commands the packager runs.")
     var verbose = false
+
+    func preferredEngine() throws -> Engine? {
+        guard let engine else { return nil }
+        guard let value = Engine(rawValue: engine) else {
+            throw ValidationError("unknown engine \(engine); native or wasm2c")
+        }
+        return value
+    }
 
     func load() throws -> (UniversalBundle, [AndroidABI]) {
         let bundle = try UniversalBundle(url: URL(fileURLWithPath: self.bundle))
@@ -49,7 +63,7 @@ struct BundleOptions: ParsableArguments {
                 abis.append(abi)
             }
         }
-        return (bundle, abis.isEmpty ? bundle.abis : abis)
+        return (bundle, abis.isEmpty ? bundle.defaultABIs(engine: try preferredEngine()) : abis)
     }
 
     func packager() throws -> Packager {
@@ -62,6 +76,8 @@ struct BundleOptions: ParsableArguments {
             workRoot: URL(fileURLWithPath: work)
         )
         options.allowMissingContracts = allowMissingContracts
+        options.engine = try preferredEngine()
+        options.appRuntime = Checkouts.appRuntime(appRuntime, hostPackage: hostPackage)
         return Packager(bundle: bundle, options: options, toolchain: try Toolchain.locate(), runner: CommandRunner(verbose: verbose))
     }
 }
@@ -84,6 +100,7 @@ extension AndroidApp {
             let (bundle, abis) = try options.load()
             var validator = Validator(bundle: bundle, abis: abis)
             validator.allowMissingContracts = options.allowMissingContracts
+            validator.engine = try options.preferredEngine()
             let diagnostics = validator.validate()
             report(diagnostics)
             if diagnostics.contains(where: { $0.severity == .error }) {
