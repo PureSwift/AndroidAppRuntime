@@ -7,8 +7,29 @@ public struct ManifestWriter {
 
     public var bundle: UniversalBundle
 
+    /// Whether the APK has a native arm64 slice, which needs heap pointer
+    /// tagging off (`Plan.md` §9.1). wasm2c's code doesn't.
+    public var hasNativeARM64Slice = true
+
     public init(bundle: UniversalBundle) {
         self.bundle = bundle
+    }
+
+    // MARK: Background work
+
+    /// `foregroundServiceType`s the host's service needs: `location` for
+    /// `location(.always)`, `connectedDevice` for Bluetooth with the
+    /// `background` option.
+    public var foregroundServiceTypes: [String] {
+        let capabilities = Set(bundle.info.capabilities.map(\.rawValue))
+        var types: [String] = []
+        if capabilities.contains("location"), bundle.capabilityOptions["location"]?["access"] == "always" {
+            types.append("location")
+        }
+        if capabilities.contains("bluetooth"), bundle.capabilityOptions["bluetooth"]?["background"] == "true" {
+            types.append("connectedDevice")
+        }
+        return types
     }
 
     // MARK: Permissions
@@ -75,6 +96,16 @@ public struct ManifestWriter {
             add(Permission("android.permission.INTERNET"))
             add(Permission("android.permission.ACCESS_NETWORK_STATE"))
         }
+        let services = foregroundServiceTypes
+        if !services.isEmpty {
+            add(Permission("android.permission.FOREGROUND_SERVICE"))
+        }
+        if services.contains("location") {
+            add(Permission("android.permission.FOREGROUND_SERVICE_LOCATION"))
+        }
+        if services.contains("connectedDevice") {
+            add(Permission("android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"))
+        }
         return permissions
     }
 
@@ -121,18 +152,33 @@ public struct ManifestWriter {
             lines += extra.split(separator: "\n", omittingEmptySubsequences: false).map { "    " + $0 }
         }
         let icon = bundle.icon != nil ? "\n        android:icon=\"@mipmap/ic_launcher\"" : ""
-        lines.append("""
+        let tagging = hasNativeARM64Slice ? """
 
                 <!--
                     allowNativeHeapPointerTagging: the arm64 slice's Embedded stdlib
                     keeps String's flags in a pointer's top byte, where Android 11+
                     tags heap pointers (AndroidAppRuntime's Plan.md §9.1).
                 -->
+            """ : "\n"
+        var service = ""
+        let types = foregroundServiceTypes
+        if !types.isEmpty {
+            service = """
+
+                    <!-- Keeps background location and Bluetooth going (Plan.md §6.2). -->
+                    <service
+                        android:name="org.pureswift.appruntime.contracts.HostService"
+                        android:exported="false"
+                        android:foregroundServiceType="\(types.joined(separator: "|"))" />
+            """
+        }
+        lines.append("""
+            \(tagging)
                 <application
                     android:name="org.pureswift.appruntime.AppRuntimeApplication"
                     android:label="@string/app_name"\(icon)
                     android:extractNativeLibs="false"
-                    android:allowNativeHeapPointerTagging="false"
+                    android:allowNativeHeapPointerTagging="\(hasNativeARM64Slice ? "false" : "true")"
                     android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
                     <activity
@@ -145,7 +191,7 @@ public struct ManifestWriter {
                             <action android:name="android.intent.action.MAIN" />
                             <category android:name="android.intent.category.LAUNCHER" />
                         </intent-filter>
-                    </activity>
+                    </activity>\(service)
                 </application>
             </manifest>
             """)
