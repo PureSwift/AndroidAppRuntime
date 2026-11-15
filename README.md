@@ -15,13 +15,17 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** phase 3 of the [plan](Documentation/Plan.md): every AppRuntime
-contract module runs on Android, checked on the emulator by
-`Scripts/contracts-check.sh`. In phase 2, `android-app` packages a universal
-bundle as a debug APK, or as a signed release APK or App Bundle. Before
-that, in phase 1: AppRuntime's `ExampleUI` runs from its universal bundle in
-the emulator, rendered by AndroidSwiftUI's composeui. Taps, typing, the lazy
-list, navigation and the back gesture all reach the guest and come back.
+**Status:** phase 4 of the [plan](Documentation/Plan.md): `android-app` can
+run an app from its `App.wasm` through wasm2c, location updates continue in
+the background, the bundle's images become drawables, and
+`Scripts/example-ui.sh --accessibility` audits screens for TalkBack. In
+phase 3 every AppRuntime contract module came to Android, checked on the
+emulator by `Scripts/contracts-check.sh`; in phase 2, `android-app` packaged
+a universal bundle as a debug APK, or as a signed release APK or App Bundle.
+Before that, in phase 1: AppRuntime's `ExampleUI` runs from its universal
+bundle in the emulator, rendered by AndroidSwiftUI's composeui. Taps,
+typing, the lazy list, navigation and the back gesture all reach the guest
+and come back.
 
 ![ExampleUI in the emulator](Documentation/ExampleUI-phase1.png)
 
@@ -62,7 +66,10 @@ The script:
 - installs it, and drives it with UI Automator
   (`Scripts/example-ui-check.py`).
 
-It uses a running emulator unless `ANDROID_SERIAL` names a device.
+It uses a running emulator unless `ANDROID_SERIAL` names a device. With
+`--accessibility`, the check also audits each screen for TalkBack: every
+control has a label, none is two stops, targets are at least 48 dp, and
+images have descriptions.
 `Scripts/example-app.sh --run` does the same for phase 0.
 
 ## Contracts
@@ -83,6 +90,11 @@ the player's trace in logcat, and makes things happen for the app to see:
 
 - it changes the emulator's battery and GPS position;
 - it answers the location, Nearby devices and physical activity prompts.
+
+Last, it picks "Allow all the time" for the app's location, checks the
+host's foreground service runs, and moves the GPS with the app in the
+background. `--engine wasm2c` runs the same checks from the app's
+`App.wasm`, translated to C (it needs WABT: `brew install wabt`).
 
 Networking's checks need the Internet (httpbin.org). Bluetooth scans, and
 connects to the first connectable device it finds, if any. NFC needs a
@@ -115,8 +127,17 @@ ANDROID_KEYSTORE_PASSWORD=… swift run android-app package App.app --aab --keys
   `ANDROID_KEY_PASSWORD`.
 - `gradle` writes the app's Gradle project, for Android Studio.
 
-Each ABI the bundle has is built, unless `--abi` picks some. The work goes
+Each ABI the bundle has a slice for is built, unless `--abi` picks some.
+An ABI without a slice is made from the bundle's `App.wasm` with wasm2c;
+`--engine native` or `--engine wasm2c` chooses for every ABI. wasm2c needs
+WABT (`brew install wabt`) and AppRuntime's checkout, for its shim
+(`--appruntime`, `APPRUNTIME_PATH`, or one next to this one). The work goes
 in `.build/android-app/<identifier>/`.
+
+The bundle's images (`resources/**` PNG, JPEG, WebP and GIF, with `@2x` and
+`@3x` variants) become Android drawables, so `Image("Logo")` finds them.
+`location(.always)` gets the host's foreground service, which keeps
+location updates going in the background.
 
 ## Tests
 
