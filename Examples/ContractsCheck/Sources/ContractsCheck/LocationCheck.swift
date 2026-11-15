@@ -3,7 +3,9 @@ import DynamicRuntime
 
 /// `LocationManager`: the authorization prompt (the script taps "While
 /// using the app"), then one location and updates from the emulator's
-/// GPS, which the script sets, and the heading.
+/// GPS, which the script sets, and the heading. Last of all the checks,
+/// background access: the script picks "Allow all the time" in Settings,
+/// sends the app to the background and moves the GPS.
 final class LocationCheck: LocationManagerDelegate {
 
     let report: Report
@@ -20,6 +22,8 @@ final class LocationCheck: LocationManagerDelegate {
     private var lastPosition: (Int, Int)?
 
     private var sawHeading = false
+
+    private var askedForAlways = false
 
     init(report: Report) {
         self.report = report
@@ -39,6 +43,13 @@ final class LocationCheck: LocationManagerDelegate {
             report.check(status == LocationAuthorization.notDetermined.rawValue, "location.didChangeAuthorization first \(status)")
             report.note("location.requesting")
             manager.requestWhenInUseAuthorization()
+            return
+        }
+        if askedForAlways {
+            report.check(status == LocationAuthorization.authorizedAlways.rawValue, "location.always \(status)")
+            guard status == LocationAuthorization.authorizedAlways.rawValue else { return }
+            manager.setBackgroundUpdatesEnabled(true)
+            report.note("location.background")
             return
         }
         report.check(status == LocationAuthorization.authorizedWhenInUse.rawValue, "location.didChangeAuthorization \(status) \(accuracy)")
@@ -69,6 +80,14 @@ final class LocationCheck: LocationManagerDelegate {
             manager.startUpdatingLocation()
             manager.startUpdatingHeading()
         }
+    }
+
+    /// After the other prompts: Android shows one at a time.
+    func requestAlways() {
+        guard let manager, !askedForAlways else { return }
+        askedForAlways = true
+        report.note("location.requestingAlways")
+        manager.requestAlwaysAuthorization()
     }
 
     func didUpdateHeading(_ manager: LocationManager, heading: Heading) {
