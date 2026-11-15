@@ -277,6 +277,36 @@ final class RecordingLocationDelegate: LocationManagerDelegate {
         #expect(!source(manager).heading)
     }
 
+    @Test func holdsTheForegroundServiceForBackgroundUpdates() {
+        final class Service: BackgroundSystem {
+            var runs: [Int32] = []
+            func run(types: Int32) -> Int32 {
+                runs.append(types)
+                return types
+            }
+        }
+        let service = Service()
+        HostBackground.reset()
+        HostBackground.system = service
+        defer { HostBackground.system = nil }
+        permissions.granted = [AndroidPermissions.fineLocation, AndroidPermissions.coarseLocation]
+        let delegate = RecordingLocationDelegate()
+        var manager: AndroidLocationManager? = self.manager(delegate)
+        manager?.setBackgroundUpdatesEnabled(true)
+        #expect(delegate.events == ["fail \(LocationError.backgroundNotAllowed.rawValue)"], "when-in-use only")
+        manager?.startUpdatingLocation()
+        #expect(service.runs.isEmpty)
+        permissions.granted.insert(AndroidPermissions.backgroundLocation)
+        manager?.setBackgroundUpdatesEnabled(true)
+        #expect(service.runs == [HostBackground.Work.location.rawValue])
+        manager?.stopUpdatingLocation()
+        #expect(service.runs.last == 0)
+        manager?.startUpdatingLocation()
+        #expect(service.runs.last == HostBackground.Work.location.rawValue)
+        manager = nil
+        #expect(service.runs.last == 0, "a released manager lets the service go")
+    }
+
     @Test func registersEveryContract() {
         #expect(AndroidHostLocation.contracts.map(\.name) == [
             "org.pureswift.location.LocationManager", "org.pureswift.location.LocationManagerDelegate",
