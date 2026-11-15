@@ -130,6 +130,23 @@ def main():
 
     # NFC: the emulator has none, so the session fails as it should.
     expect("· nfc.done")
+
+    # Background location: "Allow all the time" in Settings, then updates
+    # from the foreground service while the app is in the background.
+    if expect("· location.requestingAlways"):
+        if not device.tap("Allow all the time"):
+            missing.append("the background location setting")
+        device.run("shell", "input", "keyevent", "KEYCODE_BACK")
+        if expect("· location.background"):
+            time.sleep(2)
+            services = device.run("shell", "dumpsys", "activity", "services", PACKAGE)
+            if "HostService" not in services or "isForeground=true" not in services:
+                missing.append("the foreground service")
+            device.run("shell", "input", "keyevent", "KEYCODE_HOME")
+            time.sleep(2)
+            device.emulator("geo", "fix", "-0.124600", "51.500700")
+            expect_match(r"ok location\.update \d+ 515007 -1246", "ok location.update … 515007 -1246 in the background", timeout=30)
+            device.run("shell", "am", "start", "-n", f"{PACKAGE}/org.pureswift.appruntime.AppRuntimeActivity")
     device.wait("· bluetooth.discovered", timeout=10)
 
     # Networking runs by itself, one request at a time.
