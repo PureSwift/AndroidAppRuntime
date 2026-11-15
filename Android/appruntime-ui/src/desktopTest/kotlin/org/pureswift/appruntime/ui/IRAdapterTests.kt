@@ -86,6 +86,30 @@ class IRAdapterTests {
     }
 
     @Test
+    fun mapsGridsAndSwipeActionsToComposeuisNodes() {
+        val root = show(IRNode("VStack", 1, children = listOf(
+            IRNode("Grid", 2, mapOf("horizontal" to IRValue.Str("leading"), "horizontalSpacing" to IRValue.Dbl(16.0)), children = listOf(
+                IRNode("GridRow", 3, mapOf("alignment" to IRValue.Str("top")), children = listOf(text(4, "Frontend"), text(5, "DynamicSwiftUI"))),
+            )),
+            IRNode("SwipeActions", 6, mapOf("edge" to IRValue.Str("trailing"), "allowsFullSwipe" to IRValue.Bool(false)), children = listOf(
+                text(7, "Banana"), button(8, "Delete", role = "destructive"),
+            )),
+        )))
+        val grid = root.find("2")!!
+        assertEquals("Grid", grid.type)
+        assertEquals("leading", (grid.props["horizontal"] as JsonPrimitive).content)
+        assertEquals(16.0, (grid.props["horizontalSpacing"] as JsonPrimitive).content.toDouble())
+        assertEquals("GridRow", grid.children.single().type)
+        assertEquals("top", (grid.children.single().props["alignment"] as JsonPrimitive).content)
+        val swipe = root.find("6")!!
+        assertEquals("SwipeActions", swipe.type)
+        assertEquals("false", (swipe.props["allowsFullSwipe"] as JsonPrimitive).content)
+        assertEquals(listOf("Text", "Button"), swipe.children.map { it.type })
+        surface.invokeVoid(swipe.children[1].callback("onTap"))
+        assertEquals<List<Triple<Long, Int, IRValue?>>>(listOf(Triple(8L, RenderEventKind.TAP, null)), events.sent)
+    }
+
+    @Test
     fun keepsCallbackIDsAcrossUpdates() {
         val tree = IRNode("VStack", 1, children = listOf(button(2, "+"), text(3, "0")))
         val first = show(tree)
