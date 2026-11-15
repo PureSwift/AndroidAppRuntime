@@ -65,6 +65,9 @@ public struct GradleProject {
     /// device of another ABI install an app without `libapp.so`.
     public var abis: [AndroidABI]
 
+    /// Whether arm64 is packaged from its native slice (`ManifestWriter`).
+    public var hasNativeARM64Slice = true
+
     /// `compileSdk`.
     public static let compileSDK = 36
 
@@ -217,9 +220,12 @@ public struct GradleProject {
         """
 
     /// Writes the project, leaving files that haven't changed alone so builds
-    /// stay incremental. The libraries go in `jniLibs` separately.
-    public func write() throws(PackagerError) {
-        let manifest = ManifestWriter(bundle: bundle)
+    /// stay incremental; warnings about the bundle's images. The libraries
+    /// go in `jniLibs` separately.
+    @discardableResult
+    public func write() throws(PackagerError) -> [String] {
+        var manifest = ManifestWriter(bundle: bundle)
+        manifest.hasNativeARM64Slice = hasNativeARM64Slice
         try write(settings, to: directory.appendingPathComponent("settings.gradle.kts"))
         try copy(android.appendingPathComponent("build.gradle.kts"), to: directory.appendingPathComponent("build.gradle.kts"))
         try copy(android.appendingPathComponent("gradle.properties"), to: directory.appendingPathComponent("gradle.properties"))
@@ -240,6 +246,16 @@ public struct GradleProject {
             // Android scales the largest density down for the others.
             try copy(icon, to: res.appendingPathComponent("mipmap-xxxhdpi/ic_launcher.png"))
         }
+        // The app's images, as drawables the player finds by name.
+        var warnings: [String] = []
+        if let resources = bundle.resources {
+            let (images, problems) = ImageResources.entries(in: resources)
+            warnings = problems
+            for image in images {
+                let file = "\(image.folder)/\(image.resource).\(image.source.pathExtension.lowercased())"
+                try copy(image.source, to: res.appendingPathComponent(file))
+            }
+        }
 
         // Assets: the app's keys and its resources, which the host reads.
         let rt = main.appendingPathComponent("assets/rt")
@@ -248,6 +264,7 @@ public struct GradleProject {
         if let resources = bundle.resources {
             try copy(resources, to: rt.appendingPathComponent("resources"))
         }
+        return warnings
     }
 
     // MARK: Building
