@@ -40,6 +40,7 @@ final class NFCCheck: NFCReaderDelegate {
         }
         report.check(error == expected, "nfc.didInvalidate \(error)")
         report.note("nfc.done")
+        Checks.location?.requestAlways()
     }
 
     func didDetect(_ reader: NFCReader, tags: [NFCTag]) {}
