@@ -7,7 +7,10 @@
 # device and drives it (Scripts/example-ui-check.py): it renders, and taps,
 # typing, the lazy list and navigation reach the guest and back.
 #
-#   Scripts/example-ui.sh [--abi arm64-v8a|x86_64] [--run] [--skip-bundle]
+#   Scripts/example-ui.sh [--abi arm64-v8a|x86_64] [--run] [--accessibility] [--skip-bundle]
+#
+# --accessibility also audits each screen for TalkBack
+# (Scripts/example-ui-check.py).
 #
 # Environment: as Scripts/example-app.sh, plus ANDROIDSWIFTUI_PATH, an
 # AndroidSwiftUI checkout for composeui (../AndroidSwiftUI by default), and
@@ -17,12 +20,14 @@ set -euo pipefail
 abi=arm64-v8a
 run=0
 skip_bundle=0
+check_flags=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --abi) abi="$2"; shift 2 ;;
         --run) run=1; shift ;;
         --skip-bundle) skip_bundle=1; shift ;;
-        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+        --accessibility) check_flags+=(--accessibility); shift ;;
+        -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -62,5 +67,5 @@ echo "apk: $apk"
 if [ "$run" = 1 ]; then
     use_device
     "$adb" install -r "$apk" > /dev/null
-    python3 "$root/Scripts/example-ui-check.py" --adb "$adb" --screens "$work/screens"
+    python3 "$root/Scripts/example-ui-check.py" --adb "$adb" --screens "$work/screens" ${check_flags[@]+"${check_flags[@]}"}
 fi
