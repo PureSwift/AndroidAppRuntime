@@ -44,6 +44,14 @@ public enum AndroidABI: String, CaseIterable, Sendable {
         }
     }
 
+    /// The NDK clang's target, at the minimum API.
+    public var clangTarget: String {
+        switch self {
+        case .armv7: "armv7a-linux-androideabi\(Self.minimumAPI)"
+        default: "\(ndkTriple)\(Self.minimumAPI)"
+        }
+    }
+
     /// The ELF `e_machine` of its objects.
     public var elfMachine: UInt16 {
         switch self {
