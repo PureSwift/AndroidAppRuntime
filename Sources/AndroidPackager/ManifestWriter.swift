@@ -124,6 +124,14 @@ public struct ManifestWriter {
         }
     }
 
+    /// The GLES version `<uses-feature android:glEsVersion>` requires for the
+    /// `graphics` capability (DynamicRuntime.md §8.3): 2.0, or 3.0 for
+    /// `.graphics(.gles3)`. Every device has 2.0, so it's always required.
+    public var glESVersion: String? {
+        guard bundle.info.capabilities.contains(where: { $0.rawValue == "graphics" }) else { return nil }
+        return bundle.capabilityOptions["graphics"]?["api"] == "gles3" ? "0x00030000" : "0x00020000"
+    }
+
     // MARK: The manifest
 
     /// `AndroidManifest.xml`: permissions, features, the app's extra XML, and
@@ -146,6 +154,9 @@ public struct ManifestWriter {
         }
         for feature in features {
             lines.append(#"    <uses-feature android:name="\#(feature.name)" android:required="\#(feature.required)" />"#)
+        }
+        if let glESVersion {
+            lines.append(#"    <uses-feature android:glEsVersion="\#(glESVersion)" android:required="true" />"#)
         }
         if let extra = bundle.extraManifest, !extra.isEmpty {
             lines.append("    <!-- The app's android.extraManifest. -->")
