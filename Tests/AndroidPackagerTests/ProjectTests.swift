@@ -159,6 +159,37 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: res.appendingPathComponent("drawable-mdpi/rt_notes.txt").path))
     }
 
+    @Test func indexesTheResourcesForFiles() throws {
+        let url = Fixtures.bundle(in: directory)
+        for path in ["welcome.txt", "levels/1.map", "levels/boss/3.map", ".hidden", "_private/key.txt",
+                     ".DS_Store", "levels/.ds_store", ".git/HEAD", "CVS/Entries", "notes.txt~", "Thumbs.db"] {
+            directory.write(Data([0x41]), to: "Weather.app/resources/\(path)")
+        }
+        let project = GradleProject(directory: directory.url.appendingPathComponent("project"),
+                                    hostPackage: Fixtures.hostPackage(in: directory), bundle: try UniversalBundle(url: url), abis: [.arm64])
+        try project.write()
+        let index = try read(project.directory.appendingPathComponent("app/src/main/assets/rt/resources.index"))
+        #expect(index == """
+            .hidden
+            _private/key.txt
+            levels/1.map
+            levels/boss/3.map
+            welcome.txt
+
+            """)
+        // Gradle keeps what starts with "." or "_", as the index has it.
+        let build = try read(project.directory.appendingPathComponent("app/build.gradle.kts"))
+        #expect(build.contains(#"ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~""#))
+    }
+
+    @Test func indexesNoResourcesForABundleWithout() throws {
+        let url = Fixtures.bundle(in: directory)
+        let project = GradleProject(directory: directory.url.appendingPathComponent("project"),
+                                    hostPackage: Fixtures.hostPackage(in: directory), bundle: try UniversalBundle(url: url), abis: [.arm64])
+        try project.write()
+        #expect(try read(project.directory.appendingPathComponent("app/src/main/assets/rt/resources.index")) == "")
+    }
+
     @Test func rewritesResourcesTheAppDropped() throws {
         let host = Fixtures.hostPackage(in: directory)
         let url = directory.url.appendingPathComponent("gradle")
