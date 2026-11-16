@@ -1,7 +1,26 @@
 # Android host — Plan
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
-armeabi-v7a ABIs on hardware.
+armeabi-v7a ABIs on hardware. Surfaces (§6.3) came after them.
+
+**Surfaces:** AppRuntime's graphics contract. A guest draws with OpenGL
+ES 2.0 in a `GLSurface` view, and gets that view's touches, mouse and
+keys.
+
+- **How:** `AndroidHostGraphics` draws with EGL from Swift, on the main
+  thread, in a `TextureView` the player puts where the node is (§6.3).
+  Frames come from the main thread's `AChoreographer`.
+- **ExampleGL runs:** `Scripts/example-gl.sh` packages AppRuntime's
+  `ExampleGL` and checks the screen's pixels on the emulator.
+  - The triangle draws and turns.
+  - A tap on it reverses the turn, and Space pauses it.
+  - After Home and back, it draws again.
+
+  All 12 checks pass both from the native slice and from `App.wasm`
+  through wasm2c, which compiles AppRuntime's GL shim in.
+- **Unit tests:** 24 Swift tests cover the frame loop, input delivery and
+  the key tables, against a fake EGL. A lost context is unit-tested only:
+  the emulator doesn't lose one.
 
 **Phase 4:**
 
@@ -415,7 +434,9 @@ Each contract module is plain Swift: the contract, its mappings, and a
 small protocol for what it asks Android (`DeviceSystem`, `LocationSystem`,
 …), so `swift test` checks it on macOS against a fake. The Android calls are
 Kotlin classes in `:appruntime-contracts`, and `AndroidHostApp` binds them
-with swift-java. Motion reads the NDK's sensors from Swift, with no Kotlin.
+with swift-java. Motion reads the NDK's sensors from Swift, with no Kotlin,
+and surfaces draw with EGL from Swift; Kotlin gives them a view and its
+input.
 
 | Module | Contents |
 |---|---|
@@ -428,6 +449,7 @@ with swift-java. Motion reads the NDK's sensors from Swift, with no Kotlin.
 | `AndroidHostFormatting` | `NumberFormat`, `DateFormat` and `LocaleInfo` over `android.icu.text` |
 | `AndroidHostMotion` | `MotionManager`, `Altimeter`, `Pedometer` over the NDK's sensors (`ASensorManager`); `ActivityRecognizer` reports unavailable |
 | `AndroidHostNFC` | `NFCReader`, `NFCTag` and NDEF over `NfcAdapter` reader mode |
+| `AndroidHostGraphics` | `Surface` over EGL and `AChoreographer` (§6.3): `SurfaceHub` runs the frames and delivers input, `InputMapping` maps `MotionEvent`s and key codes |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
 | `AndroidPackager`, `android-app` | The packager (§8) |
@@ -436,9 +458,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` (the composable a `GLSurface` node becomes) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -529,6 +551,74 @@ Permissions by capability:
 | Motion (phase 3) | `ASensorManager` (NDK), from Swift through `CAndroidHost` | Accelerometer, gyroscope, `TYPE_PRESSURE` for the altimeter, `TYPE_STEP_COUNTER` for the pedometer. Timestamps are already `CLOCK_BOOTTIME` nanoseconds. `ActivityRecognizer` needs Google Play services, so it reports `isAvailable == false` |
 | `NFCReader` (phase 3) | `NfcAdapter.enableReaderMode` with the tag technologies requested | Reader mode needs the resumed Activity, so the reader session follows the lifecycle |
 
+### 6.3 Surfaces
+
+AppRuntime's `Surface` contract (DynamicRuntime.md §8,
+Contracts/Graphics.md): the guest makes a surface, shows it with
+`GLSurface(surface.identifier())`, and draws with GLES 2.0 in its
+delegate's `frame`.
+
+- **The view.** The adapter turns a `GLSurface` node into composeui's
+  `Composable` node, named `org.pureswift.appruntime.GLSurface`.
+  - The shell registers the composable: an `AndroidView` holding a
+    `GraphicsView`, which is a `TextureView`.
+  - A `TextureView` composes like any view, so SwiftUI's layering,
+    clipping and opacity apply. A `SurfaceView` would sit in its own layer.
+  - The node's modifiers wrap the view, as for any registered view.
+- **One context.** One GLES 2.0 context serves every surface; each view's
+  window gets an EGL window surface.
+  - The context is made on the main thread when the first view arrives.
+    It stays when views come and go, so leaving the screen loses nothing.
+  - GL object names are shared between surfaces.
+  - A wasm2c slice's GL shim tracks buffer bindings per context. With one
+    context, its generation (`rt_gl_context_generation`) changes only when
+    the context is replaced.
+- **Frames.**
+  - The main thread's `AChoreographer` calls `SurfaceHub` once per
+    display refresh, while a visible view shows a live surface and the
+    app is active.
+  - For each view, the hub sends the waiting input, then `resize` if the
+    size or scale changed. Then it makes the context current, calls
+    `frame`, swaps, and clears the current context.
+  - Timestamps are `CLOCK_BOOTTIME`, the `Clock` built-in's timeline.
+    Choreographer and input times are `CLOCK_MONOTONIC`, and are moved
+    over.
+  - `AChoreographer_postFrameCallback64` is API 29, so it's looked up at
+    run time. On API 28 the older callback's time is used on 64-bit ABIs.
+- **A lost context.** `EGL_CONTEXT_LOST` from `eglMakeCurrent` or
+  `eglSwapBuffers` gives every surface `contextLost`. A new context is
+  then made, and every surface gets `contextRestored`.
+- **Input.** Kotlin passes `MotionEvent`s and `KeyEvent`s raw, and
+  `InputMapping` maps them (DynamicRuntime.md §8.6).
+  - **IDs.** Touches and pens get Android's pointer ID plus 1, and the
+    mouse is 0.
+  - **Coalescing.** Moves are kept to one per pointer per frame. A
+    pointer's waiting move goes out before its `down` or `up`.
+  - **Keys.** A key's scan code names its position: it's a Linux key code,
+    and is mapped to its HID usage. Keys without one, such as
+    `adb shell input`'s, are mapped from their key code. Back, the volume
+    keys and others the contract doesn't carry stay the system's.
+  - **Focus.** A tap focuses the view. It has focus while it's focused in
+    a window that has focus.
+  - **No stuck input.** Losing focus, being hidden, the app going
+    inactive or the view going all send `cancel` for each pointer in
+    contact, then `focus(false)`.
+  - **Pointer capture.** `View.requestPointerCapture` (API 26) gives
+    relative mouse movement, summed into one `pointerDelta` per frame.
+    `setPointerCaptured(true)` returns whether it asked: the view must have
+    window focus, and a mouse must be connected. The answer arrives as
+    `pointerCapture`.
+- **Accessibility.** The `TextureView` isn't important for accessibility,
+  because GL's pixels say nothing to TalkBack. The node's accessibility
+  modifiers label the view around it.
+- **Packaging.** For the `graphics` capability, the packager adds
+  `<uses-feature android:glEsVersion="0x00020000" android:required="true"/>`
+  (`0x00030000` for `.gles3`).
+  - `libapp.so` links `libEGL` and `libGLESv2`, so a native slice's `gl*`
+    calls resolve.
+  - For wasm2c, the packager reads `App.wasm`'s imports. If any comes from
+    `env.gl`, it compiles AppRuntime's `gl_shim.c` with `RT_GL_DIRECT`.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -577,6 +667,7 @@ props, and a few nodes need work in composeui itself:
 | `Grid`, `GridRow` | `Grid`, `GridRow` | Columns sized to the widest cell (added in phase 4) |
 | `SwipeActions` | `SwipeActions` | Drag to reveal the actions; TalkBack offers them on the row (added in phase 4) |
 | `Searchable` | `NavStack`'s `searches` | The adapter lifts each level's field onto its screen |
+| `GLSurface` | `Composable`, registered by the shell | A `GraphicsView` the surface draws in (§6.3) |
 | Unknown types and modifiers | `EmptyView` | Logged once per type: the vocabulary is add-only |
 
 Modifiers map one to one: `padding`, `frame`, `offset`, `background`,
@@ -620,14 +711,16 @@ The pipeline:
    - The SDK's toolset links with `-z max-page-size=16384`, the 16 KB page
      alignment Play requires for `targetSdk` 35 apps.
    - With `--engine wasm2c`, AppRuntime's `Scripts/wasm2c-shim.py build`
-     makes the `libapp.a` instead.
+     makes the `libapp.a` instead. A module that imports `env.gl` gets
+     AppRuntime's GL shim compiled in (§6.3).
 3. **Write `AndroidManifest.xml`.** It holds:
    - the package, `versionCode` (the build number) and `versionName`;
    - `minSdk` and `targetSdk`;
    - the label (`@string/app_name`, per language) and the icon;
    - the permissions from §6.1;
    - `uses-feature` entries (`bluetooth_le`, `nfc`, `sensor.*`), marked
-     `required` for capabilities marked `.required()`;
+     `required` for capabilities marked `.required()`, and GLES 2.0
+     (`glEsVersion`), always required, for `graphics`;
    - an intent filter for each URL scheme;
    - the app's `android.extraManifest`, merged into `<manifest>`.
 4. **Resources.**
@@ -691,6 +784,8 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    and the shim's `shim` command itself, and compiles and seals with the
    NDK. A `--cc`, `--ld` and `--objcopy` for `build` would let it use the
    shim's build.
+7. **The graphics docs.** `Contracts/Graphics.md` and DynamicRuntime.md
+   §8.6 say no host implements `Surface` yet. This one does now (§6.3).
 
 ### 9.2 AndroidSwiftUI
 
@@ -756,6 +851,9 @@ for using them.
   - `ExampleUI` end to end: UI Automator finds nodes by
     `accessibilityIdentifier`, taps, types and navigates, and takes a
     screenshot of each screen.
+  - `ExampleGL` (`Scripts/example-gl.sh`), by its pixels: it draws, turns,
+    takes a tap and a key, pauses, and draws again after Home. This runs
+    from both the slice and wasm2c.
   - The local arm64 `android-36` image covers this. CI uses API 28 and 35
     images, x86_64 on Linux runners.
 - **Hardware:** Bluetooth and NFC need a device, so they get manual runs.

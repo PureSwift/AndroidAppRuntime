@@ -110,6 +110,20 @@ class IRAdapterTests {
     }
 
     @Test
+    fun mapsAGLSurfaceToTheShellsView() {
+        val root = show(IRNode("VStack", 1, children = listOf(
+            IRNode("GLSurface", 2, mapOf("surface" to IRValue.Int(7)), modifiers = listOf(
+                IRModifier("frame", mapOf("height" to IRValue.Dbl(280.0))),
+            )),
+        )))
+        val node = root.find("2")!!
+        assertEquals("Composable", node.type)
+        assertEquals(IRAdapter.GL_SURFACE, (node.props["name"] as JsonPrimitive).content)
+        assertEquals(7, (node.props["surface"] as JsonPrimitive).content.toInt())
+        assertEquals(listOf("frame"), node.modifiers.map { it.kind })
+    }
+
+    @Test
     fun keepsCallbackIDsAcrossUpdates() {
         val tree = IRNode("VStack", 1, children = listOf(button(2, "+"), text(3, "0")))
         val first = show(tree)

@@ -70,6 +70,18 @@ public struct Wasm2c {
         appRuntime.appendingPathComponent("Sources/CRuntime/include")
     }
 
+    /// The GL shim a module that draws needs (AppRuntime's
+    /// Contracts/Graphics.md): it checks the guest's pointers and calls GLES
+    /// 2.0 directly, which `libapp.so` links.
+    var glShim: URL {
+        appRuntime.appendingPathComponent("Sources/CRuntimeGL/gl_shim.c")
+    }
+
+    /// The GL shim's header and `gles2.h`.
+    var glIncludes: [URL] {
+        [appRuntime.appendingPathComponent("Sources/CRuntimeGL/include"), appRuntime.appendingPathComponent("Sources/CGLES2/include")]
+    }
+
     /// WABT's `wasm2c`, runtime sources (`wasm-rt-impl.c`) and headers,
     /// found from `PATH` as the shim finds them.
     static func wabt(environment: [String: String] = ProcessInfo.processInfo.environment) throws(PackagerError) -> WABT {
@@ -112,11 +124,17 @@ public struct Wasm2c {
         try runner.run(["python3", shim.path, "shim", "--wasm", wasm.path, "-o", shimSource.path], directory: nil, environment: [:])
 
         let clang = toolchain.llvmTool("clang").path
-        let flags = ["--target=\(abi.clangTarget)", "-O2", "-fPIC", "-fvisibility=hidden", "-w"]
+        var flags = ["--target=\(abi.clangTarget)", "-O2", "-fPIC", "-fvisibility=hidden", "-w"]
             + Self.defines
             + ["-I", directory.path, "-I", runtime.path, "-I", found.include.path, "-I", rtInclude.path]
+        var sources = [module, shimSource, runtime.appendingPathComponent("wasm-rt-impl.c"), runtime.appendingPathComponent("wasm-rt-mem-impl.c")]
+        // The shim adds env.gl's imports when the module has them.
+        if (try? WasmModule.imports(Data(contentsOf: wasm)))?.contains(where: { $0.module == WasmModule.glModule }) == true {
+            flags += ["-DRT_GL_DIRECT"] + glIncludes.flatMap { ["-I", $0.path] }
+            sources.append(glShim)
+        }
         var objects: [String] = []
-        for source in [module, shimSource, runtime.appendingPathComponent("wasm-rt-impl.c"), runtime.appendingPathComponent("wasm-rt-mem-impl.c")] {
+        for source in sources {
             let object = directory.appendingPathComponent(source.deletingPathExtension().lastPathComponent + ".o").path
             try runner.run([clang] + flags + ["-c", source.path, "-o", object], directory: nil, environment: [:])
             objects.append(object)
@@ -149,6 +167,68 @@ public struct Wasm2c {
 
 /// The parts of a wasm module the packager reads.
 enum WasmModule {
+
+    /// The import module of GLES 2.0's functions (DynamicRuntime.md §8.1).
+    static let glModule = "env.gl"
+
+    /// The module's imports, as module and name; empty if `data` isn't a
+    /// module.
+    static func imports(_ data: Data) -> [(module: String, name: String)] {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 8, bytes[0..<4] == [0, 0x61, 0x73, 0x6D] else { return [] }
+        var index = 8
+        func leb() -> Int? {
+            var result = 0, shift = 0
+            while index < bytes.count, shift < 35 {
+                let byte = bytes[index]
+                index += 1
+                result |= Int(byte & 0x7F) << shift
+                shift += 7
+                if byte < 0x80 {
+                    return result
+                }
+            }
+            return nil
+        }
+        func name() -> String? {
+            guard let length = leb(), index + length <= bytes.count else { return nil }
+            defer { index += length }
+            return String(decoding: bytes[index..<index + length], as: UTF8.self)
+        }
+        func limits() -> Bool {
+            guard index < bytes.count else { return false }
+            let flags = bytes[index]
+            index += 1
+            return leb() != nil && (flags & 1 == 0 || leb() != nil)
+        }
+        while index < bytes.count {
+            let id = bytes[index]
+            index += 1
+            guard let size = leb(), index + size <= bytes.count else { return [] }
+            guard id == 2 else {
+                index += size
+                continue
+            }
+            var imports: [(module: String, name: String)] = []
+            guard let count = leb() else { return [] }
+            for _ in 0..<count {
+                guard let module = name(), let field = name(), index < bytes.count else { return imports }
+                imports.append((module, field))
+                let kind = bytes[index]
+                index += 1
+                switch kind {
+                case 0: guard leb() != nil else { return imports }      // a function's type
+                case 1: index += 1; guard limits() else { return imports } // a table
+                case 2: guard limits() else { return imports }          // a memory
+                case 3: index += 2                                       // a global
+                case 4: index += 1; guard leb() != nil else { return imports } // a tag
+                default: return imports
+                }
+            }
+            return imports
+        }
+        return []
+    }
 
     /// The custom sections, by name; empty if `data` isn't a module.
     static func customSections(_ data: Data) -> [String: Data] {

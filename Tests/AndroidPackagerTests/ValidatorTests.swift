@@ -79,6 +79,15 @@ import Testing
         #expect(relaxed.contains(.warning("org.pureswift.ui.Renderer is version 1 on Android; the app was built against 9")))
     }
 
+    @Test func servesSurfacesForTheGraphicsCapability() throws {
+        let surface: [String: Any] = ["Name": "org.pureswift.graphics.Surface", "Version": 1, "Kind": "contract"]
+        let delegate: [String: Any] = ["Name": "org.pureswift.graphics.SurfaceDelegate", "Version": 1, "Kind": "callback"]
+        let info = Fixtures.info(["RTCapabilities": ["graphics"], "RTContracts": [Fixtures.renderer, surface, delegate]])
+        let diagnostics = try validate(info)
+        #expect(!diagnostics.contains { $0.severity == .error })
+        #expect(!diagnostics.contains { $0.message.contains("graphics") })
+    }
+
     @Test func checksSlices() throws {
         let wrong = try validate(slices: [.arm64: 62])
         #expect(wrong.contains(.error("android-arm64-v8a slice: objects are for ELF machine [62], not 183 (aarch64)")))

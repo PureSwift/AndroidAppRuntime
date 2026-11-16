@@ -9,13 +9,19 @@ an Android app:
   runtime core behind `rt.h`, and the contract implementations over the
   Android SDK. Each contract module is Swift over a small Kotlin class, bound
   with [swift-java](https://github.com/swiftlang/swift-java); Motion reads
-  the NDK's sensors directly;
+  the NDK's sensors directly, and surfaces draw with EGL from Swift;
 - the **SwiftUI player**: [AndroidSwiftUI](https://github.com/PureSwift/AndroidSwiftUI)'s
   Compose interpreter, behind an adapter for AppRuntime's render IR;
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** phase 4 of the [plan](Documentation/Plan.md): `android-app` can
+**Status:** surfaces: an app can draw with OpenGL ES 2.0 in a `GLSurface`
+view, with its touches, mouse and keys. AppRuntime's `ExampleGL` runs on the
+emulator, from its slice and through wasm2c.
+
+![ExampleGL in the emulator](Documentation/ExampleGL-android.png)
+
+Before that, phase 4 of the [plan](Documentation/Plan.md): `android-app` can
 run an app from its `App.wasm` through wasm2c, location updates continue in
 the background, the bundle's images become drawables, and
 `Scripts/example-ui.sh --accessibility` audits screens for TalkBack. In
@@ -78,9 +84,9 @@ images have descriptions.
 ## Contracts
 
 The host implements AppRuntime's contract modules: Device, Formatting,
-Location, Networking, Bluetooth (the central role), Motion and NFC (the
-reader role), and the `Permissions` built-in over Android's runtime
-permissions.
+Location, Networking, Bluetooth (the central role), Motion, NFC (the
+reader role) and Graphics, and the `Permissions` built-in over Android's
+runtime permissions.
 
 ```sh
 Scripts/contracts-check.sh
@@ -103,6 +109,16 @@ Networking's checks need the Internet (httpbin.org). Bluetooth scans, and
 connects to the first connectable device it finds, if any. NFC needs a
 device with NFC; on the emulator, the check confirms the session fails as it
 should.
+
+Graphics has its own check, with AppRuntime's `ExampleGL`:
+
+```sh
+Scripts/example-gl.sh [--engine wasm2c]
+```
+
+`Scripts/example-gl-check.py` reads the screen's pixels. The triangle
+draws and turns. A tap on it reverses the turn, and Space pauses it. After
+Home and back, it draws again.
 
 ## Packaging
 

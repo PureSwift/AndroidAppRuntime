@@ -47,6 +47,20 @@ import Testing
         #expect(!manifest.contains("android:icon"))
     }
 
+    @Test func requiresGLESForTheGraphicsCapability() throws {
+        let plain = ManifestWriter(bundle: try bundle())
+        #expect(plain.glESVersion == nil)
+        #expect(!plain.manifest.contains("glEsVersion"))
+        let writer = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["graphics"]])))
+        #expect(writer.glESVersion == "0x00020000")
+        #expect(writer.permissions.isEmpty)
+        #expect(writer.manifest.contains(#"<uses-feature android:glEsVersion="0x00020000" android:required="true" />"#))
+        let three = ManifestWriter(bundle: try bundle(Fixtures.info([
+            "RTCapabilities": ["graphics"], "RTCapabilityOptions": ["graphics": ["api": "gles3"]],
+        ])))
+        #expect(three.glESVersion == "0x00030000")
+    }
+
     @Test func declaresTheForegroundServiceForBackgroundWork() throws {
         let plain = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["location", "bluetooth"]])))
         #expect(plain.foregroundServiceTypes.isEmpty)
@@ -285,6 +299,30 @@ import Testing
         #expect(objcopy.contains { $0.hasPrefix("--add-section=.rt_contracts=") })
         #expect(!objcopy.contains { $0.hasPrefix("--add-section=.rt_manifest=") }, "the module has no manifest section")
         #expect(AndroidABI.armv7.clangTarget == "armv7a-linux-androideabi28")
+    }
+
+    @Test func compilesTheGLShimForAModuleThatDraws() throws {
+        let module = Fixtures.wasm(sections: ["rt.abi": [1, 0, 0, 0]],
+                                   imports: [("rt", "rt_call"), ("env.gl", "glClear"), ("env.gl", "glViewport")])
+        #expect(WasmModule.imports(module).map { "\($0.module).\($0.name)" } == ["rt.rt_call", "env.gl.glClear", "env.gl.glViewport"])
+        #expect(WasmModule.customSections(module).keys.sorted() == ["rt.abi"])
+        let wasm = directory.url.appendingPathComponent("App.wasm")
+        try module.write(to: wasm)
+        let runner = FakeRunner()
+        let appRuntime = directory.url.appendingPathComponent("AppRuntime")
+        var wasm2c = Wasm2c(appRuntime: appRuntime, toolchain: toolchain())
+        wasm2c.wabt = .init(wasm2c: URL(fileURLWithPath: "/wabt/bin/wasm2c"), runtime: URL(fileURLWithPath: "/wabt/share/wabt/wasm2c"))
+        _ = try wasm2c.build(wasm, abi: .arm64, in: directory.url.appendingPathComponent("work"), runner: runner)
+        let compiles = runner.commands.filter { $0[0].hasSuffix("clang") }
+        #expect(compiles.count == 5)
+        #expect(compiles.allSatisfy { $0.contains("-DRT_GL_DIRECT") && $0.contains(appRuntime.appendingPathComponent("Sources/CGLES2/include").path) })
+        #expect(compiles.last?.contains(appRuntime.appendingPathComponent("Sources/CRuntimeGL/gl_shim.c").path) == true)
+        // A module that doesn't draw doesn't get it.
+        try Fixtures.wasm(sections: [:], imports: [("rt", "rt_call")]).write(to: wasm)
+        let plain = FakeRunner()
+        _ = try wasm2c.build(wasm, abi: .arm64, in: directory.url.appendingPathComponent("plain"), runner: plain)
+        #expect(plain.commands.filter { $0[0].hasSuffix("clang") }.count == 4)
+        #expect(!plain.commands.joined().contains("-DRT_GL_DIRECT"))
     }
 
     @Test func refusesToPackageWhatFailsValidation() throws {
