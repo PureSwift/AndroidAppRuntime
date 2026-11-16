@@ -1,7 +1,39 @@
 # Android host — Plan
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
-armeabi-v7a ABIs on hardware. Surfaces (§6.3) came after them.
+armeabi-v7a ABIs on hardware. Surfaces (§6.3) and web views (§6.4) came
+after them.
+
+**Web views:** AppRuntime's WebKit contract. A guest makes a page, shows
+it with `WebView(page)`, and hears its URL, title, progress, history and
+failures. It also decides navigations and runs scripts.
+
+- **How:** each page is an `android.webkit.WebView`, made off screen when
+  the guest makes it. The player moves it into a `WebPageView` where a
+  `WebView` node names it, and out again when the node goes, so the page
+  stays loaded.
+  - Swift (`AndroidHostWebKit`) turns `WebViewClient`'s and
+    `WebChromeClient`'s pieces into the contract's events, each once and
+    in order.
+  - It also maps the errors, wraps scripts, and keeps a page off the
+    network when the app doesn't declare `network`.
+- **ExampleWeb runs:** `Scripts/example-web.sh` packages AppRuntime's
+  `ExampleWeb` and drives it on the emulator.
+  - swift.org loads, and its title shows.
+  - A script counts its links.
+  - A typed address loads example.com.
+  - Back and Forward go between the two pages.
+
+  All 11 checks pass from the native slice and through wasm2c. With
+  `--no-network`, the app has no `INTERNET` permission and its page fails
+  as not permitted.
+- **composeui:** two fixes it needed are in
+  [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)
+  (§9.2). The page now shares a stack with the views around it, and a text
+  field submits on Enter.
+- **Unit tests:** 17 Swift tests cover the event order, failures, the
+  network rules, resources, scripts and the mappings, against a fake
+  `WebView`.
 
 **Surfaces:** AppRuntime's graphics contract. A guest draws with OpenGL
 ES 2.0 in a `GLSurface` view, and gets that view's touches, mouse and
@@ -450,6 +482,7 @@ input.
 | `AndroidHostMotion` | `MotionManager`, `Altimeter`, `Pedometer` over the NDK's sensors (`ASensorManager`); `ActivityRecognizer` reports unavailable |
 | `AndroidHostNFC` | `NFCReader`, `NFCTag` and NDEF over `NfcAdapter` reader mode |
 | `AndroidHostGraphics` | `Surface` over EGL and `AChoreographer` (§6.3): `SurfaceHub` runs the frames and delivers input, `InputMapping` maps `MotionEvent`s and key codes |
+| `AndroidHostWebKit` | `WebContent` over `android.webkit.WebView` (§6.4): `AndroidWebContent` turns the view's reports into the contract's events, and `WebMapping` maps errors, navigations, resources and scripts |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
 | `AndroidPackager`, `android-app` | The packager (§8) |
@@ -458,9 +491,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` (the composable a `GLSurface` node becomes) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` and `WebPageNode` (the composables `GLSurface` and `WebView` nodes become) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -619,6 +652,84 @@ delegate's `frame`.
   - For wasm2c, the packager reads `App.wasm`'s imports. If any comes from
     `env.gl`, it compiles AppRuntime's `gl_shim.c` with `RT_GL_DIRECT`.
 
+### 6.4 Web views
+
+AppRuntime's `WebContent` contract (Contracts/WebKit.md): the guest's
+`WebPage` makes a page, `WebView(page)` shows it, and the page reports
+through `WebContentDelegate`.
+
+- **A page is a `WebView`, made off screen.** `WebSystem` makes one per
+  page, keyed by the page's `identifier()`.
+  - It's made with a `MutableContextWrapper`. When a view shows the page,
+    the wrapper's base becomes that view's Activity, so `alert`,
+    `confirm` and `prompt` get Android's own dialogs.
+  - JavaScript and DOM storage are on, and file and content access are
+    off. New windows load in the same page.
+- **Showing it.** The adapter turns a `WebView` node into composeui's
+  `Composable` node, named `org.pureswift.appruntime.WebView`. The shell
+  registers it as an `AndroidView` holding a `WebPageView`, a
+  `FrameLayout`.
+  - The `WebPageView` moves the page's `WebView` in, from wherever it was.
+  - The node is `flexible`, as `GLSurface`'s is: in a stack, it takes the
+    space its siblings leave, as SwiftUI's web view does (§9.2).
+  - When the node goes (`onRelease`), the `WebView` comes out and the page
+    stays loaded, with its history and scroll position.
+  - Releasing the guest's `WebPage` destroys the `WebView`.
+- **Events.** `AndroidWebContent` keeps what the guest last heard: the
+  URL, title, loading state and progress, and the history. Android
+  reports a load in pieces, so this sends each change once, in the
+  contract's order.
+  - `onProgressChanged` can come before `onPageStarted`. Either one starts
+    loading.
+  - `onPageFinished` can come twice, and also comes after a failure. It
+    finishes a load only once, and only if the load didn't fail.
+  - `doUpdateVisitedHistory` gives URL changes, including the History API
+    ones, and the back and forward state.
+  - `onReceivedTitle` gives the URL when a page has no title, so that
+    counts as an empty title.
+  - `onReceivedError` for the main frame becomes `didFailNavigation`, then
+    the end of loading. `ERR_ABORTED` is a replaced or stopped
+    navigation, so it isn't a failure.
+- **Errors.** `WebViewClient.ERROR_*` codes map to `WebError.Code`, and so
+  do Chromium's descriptions where the code is `ERROR_UNKNOWN`:
+  `ERR_CLEARTEXT_NOT_PERMITTED` is `security`, and `ERR_NAME_NOT_RESOLVED`
+  is `network`. A certificate error on the main frame is cancelled and
+  reported as `security`.
+- **Navigations.** `shouldOverrideUrlLoading` asks the guest, for every
+  frame, and Android waits for the answer.
+  - It isn't called for `loadUrl`, as the contract wants.
+  - Its `hasGesture`, `isRedirect` and method give the navigation's kind.
+    Android doesn't ask for back, forward or reload.
+- **Without `network`:**
+  - `setBlockNetworkLoads(true)`. The app has no `INTERNET` permission
+    either.
+  - `load` of a remote URL isn't started: it fails with `notPermitted`.
+  - A navigation to a remote URL is refused without asking the guest, and
+    fails the same way.
+- **Resources.** `loadResource(path)` loads
+  `https://appassets.androidplatform.net/resources/<path>`.
+  `shouldInterceptRequest` serves that from `assets/rt/resources/`, where
+  the packager puts the bundle's resources.
+  - It serves only the loaded file's directory. Anything else on that host
+    is a 404, and a path with `..` is refused.
+  - A missing file fails with `badURL` before anything loads.
+  - That host never reaches the network, so it isn't remote.
+- **Scripts.** `evaluateJavascript` returns JSON, but gives `null` both
+  for `undefined` and when a script throws. So the script runs inside a
+  wrapper:
+  - an indirect `eval` runs it in the global scope, with its last
+    statement's value;
+  - the wrapper then returns one string: the value as JSON, "no JSON
+    value", or the exception's message.
+  - On a page whose content security policy forbids `eval`, the script
+    runs as it is. Then `null` and `undefined` both come back as no value,
+    and exceptions are lost.
+- **Pages ask for nothing.** Camera, microphone and location requests are
+  denied.
+- **When Android stops the page's renderer**, the page fails and its
+  `WebView` is destroyed. The app goes on, but that page can't load
+  again.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -668,6 +779,7 @@ props, and a few nodes need work in composeui itself:
 | `SwipeActions` | `SwipeActions` | Drag to reveal the actions; TalkBack offers them on the row (added in phase 4) |
 | `Searchable` | `NavStack`'s `searches` | The adapter lifts each level's field onto its screen |
 | `GLSurface` | `Composable`, registered by the shell | A `GraphicsView` the surface draws in (§6.3) |
+| `WebView` | `Composable`, registered by the shell | A `WebPageView` the page's `WebView` moves into (§6.4) |
 | Unknown types and modifiers | `EmptyView` | Logged once per type: the vocabulary is add-only |
 
 Modifiers map one to one: `padding`, `frame`, `offset`, `background`,
@@ -786,6 +898,11 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    shim's build.
 7. **The graphics docs.** `Contracts/Graphics.md` and DynamicRuntime.md
    §8.6 say no host implements `Surface` yet. This one does now (§6.3).
+8. **The web docs.** `Contracts/WebKit.md` says no host implements
+   `WebContent` yet, and that no real engine has loaded a page for
+   ExampleWeb. This one does now (§6.4). Its Android row could also say
+   that `evaluateJavascript` needs a wrapper to tell `undefined` and
+   exceptions from `null`.
 
 ### 9.2 AndroidSwiftUI
 
@@ -805,6 +922,15 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
     `ContextMenu` to one TalkBack stop with its items as custom actions.
     The adapter uses them, so this host needs composeui from that merge
     on.
+- **Flexible views, and submitting fields.**
+  [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)
+  (open) has two fixes. This host needs that branch until it merges.
+  - A stack child with a `flexible` prop gets `Modifier.weight`, so a web
+    view or GL surface takes the space its siblings leave, as in SwiftUI.
+    `fillMaxSize` took it all, and the views after it got none.
+  - A text field with `onSubmit` and no `submitLabel` asks for
+    `ImeAction.Done`. It used `ImeAction.Default`, which no
+    `KeyboardActions` callback hears, so `onSubmit` never fired.
 - `SwiftBridge.sink` is global, which is fine with one renderer per
   process. Multiple scenes would need a sink per `TreeStore`.
 
@@ -854,6 +980,10 @@ for using them.
   - `ExampleGL` (`Scripts/example-gl.sh`), by its pixels: it draws, turns,
     takes a tap and a key, pauses, and draws again after Home. This runs
     from both the slice and wasm2c.
+  - `ExampleWeb` (`Scripts/example-web.sh`): a page loads, a script runs
+    in it, an address loads another page, and back and forward work.
+    `--no-network` checks that an app without the capability loads
+    nothing remote.
   - The local arm64 `android-36` image covers this. CI uses API 28 and 35
     images, x86_64 on Linux runners.
 - **Hardware:** Bluetooth and NFC need a device, so they get manual runs.

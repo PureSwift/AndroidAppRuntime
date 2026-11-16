@@ -68,6 +68,7 @@ let package = Package(
         .library(name: "AndroidHostMotion", targets: ["AndroidHostMotion"]),
         .library(name: "AndroidHostNFC", targets: ["AndroidHostNFC"]),
         .library(name: "AndroidHostGraphics", targets: ["AndroidHostGraphics"]),
+        .library(name: "AndroidHostWebKit", targets: ["AndroidHostWebKit"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
         .executable(name: "android-app", targets: ["AndroidAppTool"]),
@@ -147,11 +148,16 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostWebKit",
+            dependencies: ["AndroidHost", runtime("DynamicWebKit")],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostModules",
             dependencies: [
                 "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
                 "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
-                "AndroidHostGraphics",
+                "AndroidHostGraphics", "AndroidHostWebKit",
             ],
             swiftSettings: host
         ),
@@ -160,7 +166,7 @@ let package = Package(
             dependencies: [
                 "AndroidHostModules", "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting",
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
-                "AndroidHostNFC", "AndroidHostGraphics", runtime("CRuntime"),
+                "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -224,6 +230,11 @@ let package = Package(
         .testTarget(
             name: "AndroidHostGraphicsTests",
             dependencies: ["AndroidHostGraphics"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostWebKitTests",
+            dependencies: ["AndroidHostWebKit"],
             swiftSettings: host
         ),
         .testTarget(

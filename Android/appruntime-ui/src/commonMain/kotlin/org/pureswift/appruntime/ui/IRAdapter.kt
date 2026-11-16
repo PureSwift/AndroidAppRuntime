@@ -176,7 +176,11 @@ class IRAdapter(var dark: Boolean = false) {
             "Spacer", "Divider", "Form" -> node(n.type)
             "Color" -> node("Color", "color" to num(color(n["color"]) ?: 0))
             // The shell registers the view a surface draws in (GraphicsView).
-            "GLSurface" -> node("Composable", "name" to str(GL_SURFACE), "surface" to num(n["surface"].long ?: 0), children = emptyList())
+            // Like the web view, it takes the space its stack's other
+            // children leave, as in SwiftUI (composeui's `flexible`).
+            "GLSurface" -> node("Composable", "name" to str(GL_SURFACE), "surface" to num(n["surface"].long ?: 0), "flexible" to bool(true), children = emptyList())
+            // The shell registers the view a page shows in (WebPageView).
+            "WebView" -> node("Composable", "name" to str(WEB_VIEW), "page" to num(n["page"].long ?: 0), "flexible" to bool(true), children = emptyList())
             "Shape" -> node(
                 "Shape",
                 "shape" to str(n["shape"].string ?: "rectangle"),
@@ -581,6 +585,9 @@ class IRAdapter(var dark: Boolean = false) {
 
         /** The registered composable a `GLSurface` node becomes. */
         const val GL_SURFACE = "org.pureswift.appruntime.GLSurface"
+
+        /** The registered composable a `WebView` node becomes. */
+        const val WEB_VIEW = "org.pureswift.appruntime.WebView"
 
         /** The node ID as composeui's string ID: the u64, in decimal. */
         fun idString(id: Long): String = id.toULong().toString()
