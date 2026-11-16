@@ -1,6 +1,7 @@
 @_exported import AndroidHost
 import AndroidHostBluetooth
 import AndroidHostDevice
+import AndroidHostFiles
 import AndroidHostFormatting
 import AndroidHostGraphics
 import AndroidHostLocation
@@ -25,5 +26,6 @@ public enum AndroidHostModules {
         AndroidHostNFC.self,
         AndroidHostGraphics.self,
         AndroidHostWebKit.self,
+        AndroidHostFiles.self,
     ]
 }
