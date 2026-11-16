@@ -65,11 +65,14 @@ ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/30.0.16248370 \
 Then, with an emulator running and these checkouts next to this one:
 
 - AppRuntime, with its `RuntimeHost` module (or `APPRUNTIME_PATH`);
-- AndroidSwiftUI, for composeui (or `ANDROIDSWIFTUI_PATH`), with
-  [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)
-  (its branch `feature/flexible-children` until it merges). That PR is
-  what lets a web view or GL surface share a stack with other views, and
-  a text field submit on Enter.
+- AndroidSwiftUI, for composeui (or `ANDROIDSWIFTUI_PATH`), from
+  [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)'s
+  merge on. That PR lets a web view or GL surface share a stack with other
+  views, and a text field submit on Enter.
+  - Its `master` also has
+    [#77](https://github.com/PureSwift/AndroidSwiftUI/pull/77), which turns
+    this host's sheets light in dark mode until
+    [#80](https://github.com/PureSwift/AndroidSwiftUI/pull/80) merges.
 
 ```sh
 Scripts/example-ui.sh --run
