@@ -19,6 +19,7 @@ open class AppRuntimeApplication : Application() {
         HostContext.application = this
         System.loadLibrary("app")
         LazyGridView.register()
+        GraphicsSurface.register()
     }
 
     @Deprecated("Called by the system")
