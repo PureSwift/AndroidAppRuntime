@@ -8,6 +8,7 @@ import AndroidHostMotion
 import AndroidHostNFC
 import AndroidHostNetworking
 import AndroidHostUI
+import AndroidHostWebKit
 
 /// Every module this host has: what `libapp.so` registers and what the
 /// packager checks apps against, from one list.
@@ -23,5 +24,6 @@ public enum AndroidHostModules {
         AndroidHostMotion.self,
         AndroidHostNFC.self,
         AndroidHostGraphics.self,
+        AndroidHostWebKit.self,
     ]
 }
