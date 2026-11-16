@@ -124,6 +124,17 @@ class IRAdapterTests {
     }
 
     @Test
+    fun mapsAWebViewToTheShellsView() {
+        val root = show(IRNode("VStack", 1, children = listOf(IRNode("WebView", 2, mapOf("page" to IRValue.Int(3))))))
+        val node = root.find("2")!!
+        assertEquals("Composable", node.type)
+        assertEquals(IRAdapter.WEB_VIEW, (node.props["name"] as JsonPrimitive).content)
+        assertEquals(3, (node.props["page"] as JsonPrimitive).content.toInt())
+        assertEquals("true", (node.props["flexible"] as JsonPrimitive).content)
+        assertEquals(emptyList(), node.children)
+    }
+
+    @Test
     fun keepsCallbackIDsAcrossUpdates() {
         val tree = IRNode("VStack", 1, children = listOf(button(2, "+"), text(3, "0")))
         val first = show(tree)
