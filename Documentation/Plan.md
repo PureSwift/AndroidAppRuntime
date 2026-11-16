@@ -1,8 +1,31 @@
 # Android host — Plan
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
-armeabi-v7a ABIs on hardware. Surfaces (§6.3) and web views (§6.4) came
-after them.
+armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4) and files
+(§6.5) came after them.
+
+**Files:** AppRuntime's Files contract. A guest reads and writes its own
+files, and reads its bundle's resources, with an `async` `FileManager`.
+
+- **How:** `AndroidHostFiles` runs AppRuntime's `HostFiles` for the
+  writable directories, in `filesDir` and `cacheDir`. The bundle is the
+  APK's assets, read through the NDK's `AAssetManager` and listed from an
+  index the packager writes (§6.5).
+- **ExampleFiles runs:** `Scripts/example-files.sh` packages AppRuntime's
+  `ExampleFiles` and drives it on the emulator, checking the files with
+  `run-as`.
+  - The welcome text comes from the bundle.
+  - Notes are saved, listed, opened, exported and deleted, and their
+    files are where §6.5 says.
+  - After a restart, the notes are still there and `temporary` is empty.
+
+  All 27 checks pass both from the native slice and from `App.wasm`
+  through wasm2c. It needs AppRuntime from b3eb671,
+  where `HostFiles` builds against bionic.
+- **Unit tests:** 22 Swift tests cover the bundle's index, reads, ranges,
+  listings and errors, copies out of the bundle, and the order of answers,
+  against assets in memory and a temporary directory. The packager's
+  tests cover the index and Gradle's ignored assets.
 
 **Web views:** AppRuntime's WebKit contract. A guest makes a page, shows
 it with `WebView(page)`, and hears its URL, title, progress, history and
@@ -483,6 +506,7 @@ input.
 | `AndroidHostNFC` | `NFCReader`, `NFCTag` and NDEF over `NfcAdapter` reader mode |
 | `AndroidHostGraphics` | `Surface` over EGL and `AChoreographer` (§6.3): `SurfaceHub` runs the frames and delivers input, `InputMapping` maps `MotionEvent`s and key codes |
 | `AndroidHostWebKit` | `WebContent` over `android.webkit.WebView` (§6.4): `AndroidWebContent` turns the view's reports into the contract's events, and `WebMapping` maps errors, navigations, resources and scripts |
+| `AndroidHostFiles` | `Files` (§6.5): `AndroidFiles` runs `HostFiles` for the writable directories and `BundleFiles` for the APK's assets, on one queue |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
 | `AndroidPackager`, `android-app` | The packager (§8) |
@@ -493,7 +517,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` and `WebPageNode` (the composables `GLSurface` and `WebView` nodes become) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -730,6 +754,53 @@ through `WebContentDelegate`.
   `WebView` is destroyed. The app goes on, but that page can't load
   again.
 
+### 6.5 Files
+
+AppRuntime's `Files` contract (Contracts/Files.md): the guest's
+`FileManager` reads and writes the app's own files, and reads its bundle's
+resources. No capability is needed.
+
+| `FileDirectory` | Android |
+|---|---|
+| `documents` | `filesDir/Documents` |
+| `data` | `filesDir/Data` |
+| `caches` | `cacheDir/Caches` |
+| `temporary` | `cacheDir/tmp`, emptied when the app starts |
+| `bundle` | the APK's assets under `rt/resources`, read-only |
+
+- **The writable directories are `HostFiles`.** `AndroidHostFiles` runs
+  AppRuntime's POSIX implementation for them, as the Darwin and Linux
+  hosts do, so the rules are the same code: atomic replacing writes,
+  confined paths, the errors, and a move to another volume by copying.
+  - Android's Auto Backup takes `filesDir`, where the user has it on, and
+    leaves `cacheDir` out. The system may delete what's in `cacheDir`
+    when space is short, as the contract says of `caches`.
+  - `caches` is a folder in `cacheDir`, not `cacheDir` itself. The
+    contract's table has `cacheDir`, but that's where `WebView` and the
+    system keep their caches too, and `temporary` would be inside it
+    (§9.1).
+- **The bundle is the APK's assets.** Swift reads them through the NDK's
+  `AAssetManager` (`CAndroidHost`), which any thread may use, from the
+  `AssetManager` the shell's `FileSystem` hands over at start.
+  - The size comes from `AAsset_getLength64`, which knows it without
+    reading a compressed asset through. A range read seeks.
+  - An asset has no modification date, so `modified` is 0.
+  - The NDK lists a directory's files but not its subdirectories. So the
+    packager writes `assets/rt/resources.index`, a line per file, and
+    `list` and `attributes` come from that.
+  - Writes, removes and moves out of the bundle fail with `readOnly`.
+    Copies out of it work, a chunk at a time, so a large asset copies
+    without being read whole.
+- **One queue.** Every operation runs on one serial queue, the bundle's
+  included, so a copy out of the bundle and a read of the copy happen in
+  the order they were issued. Answers are posted to the main looper.
+- **Gradle's ignored assets.** By default Gradle leaves out assets whose
+  names start with `.`, and folders whose names start with `_`. The
+  packager sets `androidResources.ignoreAssetsPattern` so that they're
+  kept, as they are in the bundle on every other host. Version-control
+  folders, `.DS_Store`, `Thumbs.db` and backup files (`*~`) are still left
+  out, and the index leaves them out too.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -840,7 +911,8 @@ The pipeline:
    - `res/values-<lang>/strings.xml` gets the app's name from
      `Manifest.strings`.
    - `assets/rt/` gets the bundle's `Info.plist`, the `.lproj` folders and
-     the app's resources.
+     the app's resources, with `resources.index` listing their files for
+     `Files` (§6.5).
 5. **Build.** The packager fills `:template` into a work-directory Gradle
    project and runs `assembleDebug`, `assembleRelease` or `bundleRelease`.
    It uses Gradle rather than raw `aapt2` / `d8` because Compose needs the
@@ -898,6 +970,11 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    shim's build.
 7. **The graphics docs.** `Contracts/Graphics.md` and DynamicRuntime.md
    §8.6 say no host implements `Surface` yet. This one does now (§6.3).
+8. **The files docs.** `Contracts/Files.md` says Android needs its own
+   host side; this one has it (§6.5). Its table puts `caches` in
+   `cacheDir` itself, and `temporary` inside it, in `cacheDir/tmp`. This
+   host uses `cacheDir/Caches`, so the app's caches are apart from
+   `WebView`'s and from `temporary`. The table could say so.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say
