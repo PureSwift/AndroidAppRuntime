@@ -212,3 +212,53 @@ int32_t candroid_frame_post(void (*callback)(int64_t timestamp, void *data), voi
     return 1;
 }
 #endif
+
+#ifdef __ANDROID__
+#include <android/asset_manager_jni.h>
+
+// MARK: Assets
+
+void *candroid_assets_from_java(void *env, void *assetManager) {
+    return AAssetManager_fromJava((JNIEnv *)env, (jobject)assetManager);
+}
+
+int64_t candroid_asset_length(void *assets, const char *path) {
+    AAsset *asset = AAssetManager_open((AAssetManager *)assets, path, AASSET_MODE_UNKNOWN);
+    if (asset == NULL) {
+        return -1;
+    }
+    int64_t length = AAsset_getLength64(asset);
+    AAsset_close(asset);
+    return length;
+}
+
+int64_t candroid_asset_read(void *assets, const char *path, int64_t offset, void *buffer, int64_t length) {
+    AAsset *asset = AAssetManager_open((AAssetManager *)assets, path, AASSET_MODE_RANDOM);
+    if (asset == NULL) {
+        return -1;
+    }
+    int64_t done = 0;
+    if (offset > 0 && AAsset_seek64(asset, offset, SEEK_SET) < 0) {
+        AAsset_close(asset);
+        return -2;
+    }
+    while (done < length) {
+        int64_t want = length - done;
+        // AAsset_read takes a size_t but returns an int.
+        if (want > (1 << 30)) {
+            want = 1 << 30;
+        }
+        int count = AAsset_read(asset, (char *)buffer + done, (size_t)want);
+        if (count < 0) {
+            AAsset_close(asset);
+            return -2;
+        }
+        if (count == 0) {
+            break;
+        }
+        done += count;
+    }
+    AAsset_close(asset);
+    return done;
+}
+#endif
