@@ -9,6 +9,7 @@ import AndroidHostNFC
 import AndroidHostNetworking
 import AndroidHostModules
 import AndroidHostUI
+import AndroidHostWebKit
 import CRuntime
 import DynamicRuntime
 import RuntimeABI
@@ -39,6 +40,7 @@ public enum AndroidHostApp {
         MotionHub.shared.makeSystem = { MotionSensors.make() }
         SurfaceHub.shared.makeSystem = { GraphicsBridge.makeSystem() }
         SurfaceHub.shared.views = JavaGraphicsSystem()
+        WebHub.shared.makeSystem = { JavaWebSystem() }
     }
 
     /// The app's exports, from the sealed slice linked into this library.
