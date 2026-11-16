@@ -15,10 +15,10 @@ public enum HostContracts {
 
     /// Capabilities some contract here serves. The others still get their
     /// permissions, so `Permissions` can ask for them.
-    public static let capabilities: Set<Capability> = [.bluetooth, .location, .motion, .nfc]
+    public static let capabilities: Set<Capability> = [.bluetooth, .graphics, .location, .motion, .nfc]
 
     /// Capabilities with nothing to serve: no contract needs them.
-    public static let unserved: Set<Capability> = [.network, .graphics]
+    public static let unserved: Set<Capability> = [.network]
 }
 
 /// The packager's checks (`Plan.md` §8): the app's keys, its contracts, its
