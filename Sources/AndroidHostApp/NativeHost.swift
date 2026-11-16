@@ -2,6 +2,7 @@ import AndroidHost
 import AndroidHostBluetooth
 import AndroidHostDevice
 import AndroidHostFormatting
+import AndroidHostGraphics
 import AndroidHostLocation
 import AndroidHostMotion
 import AndroidHostNFC
@@ -36,6 +37,8 @@ public enum AndroidHostApp {
         BluetoothHub.shared.makeSystem = { AndroidBluetoothSystem() }
         NFCHub.shared.makeSystem = { AndroidNFCSystem() }
         MotionHub.shared.makeSystem = { MotionSensors.make() }
+        SurfaceHub.shared.makeSystem = { GraphicsBridge.makeSystem() }
+        SurfaceHub.shared.views = JavaGraphicsSystem()
     }
 
     /// The app's exports, from the sealed slice linked into this library.
@@ -147,6 +150,8 @@ extension NativeHost {
     public func setState(_ state: Int32) {
         guard let state = ApplicationState(rawValue: state) else { return }
         HostApplication.setState(state)
+        // Surfaces draw only while the app is active (§8.2).
+        SurfaceHub.shared.setActive(state == .active)
         if state == .active {
             // The user may have changed a permission in Settings.
             LocationHub.shared.authorizationMayHaveChanged()
