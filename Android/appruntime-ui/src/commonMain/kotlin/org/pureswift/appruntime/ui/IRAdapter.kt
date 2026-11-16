@@ -175,6 +175,8 @@ class IRAdapter(var dark: Boolean = false) {
             ))
             "Spacer", "Divider", "Form" -> node(n.type)
             "Color" -> node("Color", "color" to num(color(n["color"]) ?: 0))
+            // The shell registers the view a surface draws in (GraphicsView).
+            "GLSurface" -> node("Composable", "name" to str(GL_SURFACE), "surface" to num(n["surface"].long ?: 0), children = emptyList())
             "Shape" -> node(
                 "Shape",
                 "shape" to str(n["shape"].string ?: "rectangle"),
@@ -576,6 +578,9 @@ class IRAdapter(var dark: Boolean = false) {
     private fun callback(n: IRNode, slot: String, action: Action): Long = callbacks.id(n.id, slot, action, owner)
 
     companion object {
+
+        /** The registered composable a `GLSurface` node becomes. */
+        const val GL_SURFACE = "org.pureswift.appruntime.GLSurface"
 
         /** The node ID as composeui's string ID: the u64, in decimal. */
         fun idString(id: Long): String = id.toULong().toString()
