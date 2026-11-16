@@ -27,7 +27,7 @@ failures. It also decides navigations and runs scripts.
   All 11 checks pass from the native slice and through wasm2c. With
   `--no-network`, the app has no `INTERNET` permission and its page fails
   as not permitted.
-- **composeui:** two fixes it needed are in
+- **composeui:** two fixes it needed came in
   [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)
   (§9.2). The page now shares a stack with the views around it, and a text
   field submits on Enter.
@@ -923,14 +923,22 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
     The adapter uses them, so this host needs composeui from that merge
     on.
 - **Flexible views, and submitting fields.**
-  [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)
-  (open) has two fixes. This host needs that branch until it merges.
+  **Done:** [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)
+  has two fixes, and this host needs composeui from its merge on.
   - A stack child with a `flexible` prop gets `Modifier.weight`, so a web
     view or GL surface takes the space its siblings leave, as in SwiftUI.
     `fillMaxSize` took it all, and the views after it got none.
   - A text field with `onSubmit` and no `submitLabel` asks for
     `ImeAction.Done`. It used `ImeAction.Default`, which no
     `KeyboardActions` callback hears, so `onSubmit` never fired.
+- **Sheets in dark mode.**
+  [PureSwift/AndroidSwiftUI#77](https://github.com/PureSwift/AndroidSwiftUI/pull/77)
+  added `preferredColorScheme`, and wraps each sheet in its own theme.
+  - In a host that sets its own `MaterialTheme`, as this one does, sheets
+    came out light in dark mode, in Material's baseline colors.
+  - [#80](https://github.com/PureSwift/AndroidSwiftUI/pull/80) (open)
+    keeps the presenting palette in sheets that don't prefer another
+    scheme. Until it merges, composeui's `master` has this problem.
 - `SwiftBridge.sink` is global, which is fine with one renderer per
   process. Multiple scenes would need a sink per `TreeStore`.
 
