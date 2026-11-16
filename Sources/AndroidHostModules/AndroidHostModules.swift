@@ -2,6 +2,7 @@
 import AndroidHostBluetooth
 import AndroidHostDevice
 import AndroidHostFormatting
+import AndroidHostGraphics
 import AndroidHostLocation
 import AndroidHostMotion
 import AndroidHostNFC
@@ -21,5 +22,6 @@ public enum AndroidHostModules {
         AndroidHostBluetooth.self,
         AndroidHostMotion.self,
         AndroidHostNFC.self,
+        AndroidHostGraphics.self,
     ]
 }
