@@ -20,6 +20,7 @@ open class AppRuntimeApplication : Application() {
         System.loadLibrary("app")
         LazyGridView.register()
         GraphicsSurface.register()
+        WebPageNode.register()
     }
 
     @Deprecated("Called by the system")
