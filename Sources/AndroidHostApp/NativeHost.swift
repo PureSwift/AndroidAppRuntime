@@ -1,6 +1,7 @@
 import AndroidHost
 import AndroidHostBluetooth
 import AndroidHostDevice
+import AndroidHostFiles
 import AndroidHostFormatting
 import AndroidHostGraphics
 import AndroidHostLocation
@@ -68,6 +69,7 @@ public enum AndroidHostApp {
         AndroidBundle.languages = languages
         AndroidHostUI.surface = surface
         connectModules()
+        FilesBridge.configure()
         let host = AppHost(info: info, modules: modules)
         do {
             try host.prepare()

@@ -193,6 +193,11 @@ public struct GradleProject {
                     targetCompatibility = JavaVersion.VERSION_17
                 }
 
+                androidResources {
+                    // The bundle's resources whose names start with "." or "_" are assets too.
+                    ignoreAssetsPattern = \(kotlinString(ResourceIndex.ignoredAssets))
+                }
+
                 packaging {
                     // The Swift libraries are staged as built; Gradle doesn't strip them.
                     jniLibs.keepDebugSymbols += "**/*.so"
@@ -264,6 +269,8 @@ public struct GradleProject {
         if let resources = bundle.resources {
             try copy(resources, to: rt.appendingPathComponent("resources"))
         }
+        // What's in them, for `Files` to list.
+        try write(ResourceIndex.text(for: bundle.resources), to: rt.appendingPathComponent("resources.index"))
         return warnings
     }
 
