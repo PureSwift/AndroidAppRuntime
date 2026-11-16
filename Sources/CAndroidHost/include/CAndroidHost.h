@@ -3,8 +3,9 @@
 
 // The NDK APIs the host uses (Documentation/Plan.md §3.1, §6.2): the main
 // thread's ALooper, an eventfd for jobs posted from other threads, a
-// timerfd on CLOCK_BOOTTIME for timers, logcat, the sensors, and for
-// surfaces EGL, native windows and the Choreographer.
+// timerfd on CLOCK_BOOTTIME for timers, logcat, the sensors, for
+// surfaces EGL, native windows and the Choreographer, and the APK's assets
+// for files.
 //
 // Empty elsewhere, so the package's platform-neutral code builds and tests
 // on macOS.
@@ -82,6 +83,25 @@ int32_t candroid_frame_post(void (*callback)(int64_t timestamp, void *data), voi
 
 /// A CLOCK_MONOTONIC time, such as an input event's, on CLOCK_BOOTTIME.
 int64_t candroid_boottime_from_monotonic(int64_t nanoseconds);
+
+// MARK: Assets (Documentation/Plan.md §6.5)
+//
+// The bundle's resources are the APK's assets. These open the asset anew
+// for each call, so any thread may make them.
+
+/// The native side of an `android.content.res.AssetManager`, which the
+/// caller keeps a reference to while it's used. `env` is the calling
+/// thread's `JNIEnv *`.
+void *candroid_assets_from_java(void *env, void *assetManager);
+
+/// The length of the asset at `path`, uncompressed; -1 if there's no file
+/// there (a directory isn't one).
+int64_t candroid_asset_length(void *assets, const char *path);
+
+/// Reads up to `length` bytes of the asset at `path` from `offset` into
+/// `buffer`: how many it read, -1 if there's no file there, or -2 if
+/// reading failed.
+int64_t candroid_asset_read(void *assets, const char *path, int64_t offset, void *buffer, int64_t length);
 #endif
 
 /// A wasm2c slice's GL shim asks this on every GL call (AppRuntime's
