@@ -15,7 +15,14 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** web views: an app can show pages in a `WebView`, follow their
+**Status:** files: an app can read and write its own files, in
+`filesDir` and `cacheDir`, and read its bundle's resources from the APK's
+assets. AppRuntime's `ExampleFiles`, a notebook kept as text files, runs on
+the emulator.
+
+![ExampleFiles in the emulator](Documentation/ExampleFiles-android.png)
+
+Before that, web views: an app can show pages in a `WebView`, follow their
 loading, decide their navigations and run scripts in them, in Android's
 own `WebView`. AppRuntime's `ExampleWeb`, a small browser, runs on the
 emulator.
@@ -97,7 +104,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics and WebKit, and the `Permissions` built-in over
+reader role), Graphics, WebKit and Files, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -147,6 +154,23 @@ Scripts/example-web.sh [--no-network]
 
 `--no-network` builds the app without the `network` capability. Its page
 must then fail as not permitted.
+
+Files has its own check, with AppRuntime's `ExampleFiles`:
+
+```sh
+Scripts/example-files.sh [--engine wasm2c]
+```
+
+`Scripts/example-files-check.py` drives it, and looks at the files with
+`adb shell run-as`:
+
+- the APK has the resources, with the index `Files` lists them from;
+- the welcome text is read from the bundle;
+- saved notes are listed, and their files are in `filesDir/Documents`;
+- a note opens, and Export writes all of them into `cacheDir/Caches`;
+- Delete removes a note's file;
+- after the app starts again, the notes are still there, and
+  `temporary` is empty.
 
 ## Packaging
 
