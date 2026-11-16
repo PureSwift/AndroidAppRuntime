@@ -15,7 +15,14 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** surfaces: an app can draw with OpenGL ES 2.0 in a `GLSurface`
+**Status:** web views: an app can show pages in a `WebView`, follow their
+loading, decide their navigations and run scripts in them, in Android's
+own `WebView`. AppRuntime's `ExampleWeb`, a small browser, runs on the
+emulator.
+
+![ExampleWeb in the emulator](Documentation/ExampleWeb-android.png)
+
+Before that, surfaces: an app can draw with OpenGL ES 2.0 in a `GLSurface`
 view, with its touches, mouse and keys. AppRuntime's `ExampleGL` runs on the
 emulator, from its slice and through wasm2c.
 
@@ -58,9 +65,11 @@ ANDROID_NDK_HOME=~/Library/Android/sdk/ndk/30.0.16248370 \
 Then, with an emulator running and these checkouts next to this one:
 
 - AppRuntime, with its `RuntimeHost` module (or `APPRUNTIME_PATH`);
-- AndroidSwiftUI, for composeui (or `ANDROIDSWIFTUI_PATH`), from
-  [PureSwift/AndroidSwiftUI#78](https://github.com/PureSwift/AndroidSwiftUI/pull/78)'s
-  merge on, for its `Grid` and `SwipeActions`.
+- AndroidSwiftUI, for composeui (or `ANDROIDSWIFTUI_PATH`), with
+  [PureSwift/AndroidSwiftUI#79](https://github.com/PureSwift/AndroidSwiftUI/pull/79)
+  (its branch `feature/flexible-children` until it merges). That PR is
+  what lets a web view or GL surface share a stack with other views, and
+  a text field submit on Enter.
 
 ```sh
 Scripts/example-ui.sh --run
@@ -85,8 +94,8 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role) and Graphics, and the `Permissions` built-in over Android's
-runtime permissions.
+reader role), Graphics and WebKit, and the `Permissions` built-in over
+Android's runtime permissions.
 
 ```sh
 Scripts/contracts-check.sh
@@ -119,6 +128,22 @@ Scripts/example-gl.sh [--engine wasm2c]
 `Scripts/example-gl-check.py` reads the screen's pixels. The triangle
 draws and turns. A tap on it reverses the turn, and Space pauses it. After
 Home and back, it draws again.
+
+WebKit's check uses AppRuntime's `ExampleWeb`, and needs the Internet:
+
+```sh
+Scripts/example-web.sh [--no-network]
+```
+
+`Scripts/example-web-check.py` drives it:
+
+- swift.org loads, and its title shows;
+- a script in the page counts its links;
+- an address loads example.com;
+- Back and Forward go between the two pages.
+
+`--no-network` builds the app without the `network` capability. Its page
+must then fail as not permitted.
 
 ## Packaging
 
