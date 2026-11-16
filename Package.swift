@@ -67,6 +67,7 @@ let package = Package(
         .library(name: "AndroidHostBluetooth", targets: ["AndroidHostBluetooth"]),
         .library(name: "AndroidHostMotion", targets: ["AndroidHostMotion"]),
         .library(name: "AndroidHostNFC", targets: ["AndroidHostNFC"]),
+        .library(name: "AndroidHostGraphics", targets: ["AndroidHostGraphics"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
         .executable(name: "android-app", targets: ["AndroidAppTool"]),
@@ -86,6 +87,9 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("android", .when(platforms: [.android])),
                 .linkedLibrary("log", .when(platforms: [.android])),
+                .linkedLibrary("EGL", .when(platforms: [.android])),
+                // A slice that draws calls GLES 2.0 itself (§6.3).
+                .linkedLibrary("GLESv2", .when(platforms: [.android])),
             ]
         ),
         .target(
@@ -138,10 +142,16 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostGraphics",
+            dependencies: ["AndroidHost", "CAndroidHost", runtime("DynamicGraphics")],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostModules",
             dependencies: [
                 "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
                 "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
+                "AndroidHostGraphics",
             ],
             swiftSettings: host
         ),
@@ -150,7 +160,7 @@ let package = Package(
             dependencies: [
                 "AndroidHostModules", "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting",
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
-                "AndroidHostNFC", runtime("CRuntime"),
+                "AndroidHostNFC", "AndroidHostGraphics", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -209,6 +219,11 @@ let package = Package(
         .testTarget(
             name: "AndroidHostNFCTests",
             dependencies: ["AndroidHostNFC"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostGraphicsTests",
+            dependencies: ["AndroidHostGraphics"],
             swiftSettings: host
         ),
         .testTarget(
