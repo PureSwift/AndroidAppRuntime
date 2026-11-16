@@ -69,6 +69,7 @@ let package = Package(
         .library(name: "AndroidHostNFC", targets: ["AndroidHostNFC"]),
         .library(name: "AndroidHostGraphics", targets: ["AndroidHostGraphics"]),
         .library(name: "AndroidHostWebKit", targets: ["AndroidHostWebKit"]),
+        .library(name: "AndroidHostFiles", targets: ["AndroidHostFiles"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
         .executable(name: "android-app", targets: ["AndroidAppTool"]),
@@ -153,11 +154,16 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostFiles",
+            dependencies: ["AndroidHost", "CAndroidHost", runtime("DynamicFiles"), runtime("RuntimeHost")],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostModules",
             dependencies: [
                 "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
                 "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
-                "AndroidHostGraphics", "AndroidHostWebKit",
+                "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles",
             ],
             swiftSettings: host
         ),
@@ -166,7 +172,7 @@ let package = Package(
             dependencies: [
                 "AndroidHostModules", "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting",
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
-                "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", runtime("CRuntime"),
+                "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -175,7 +181,7 @@ let package = Package(
         .target(
             name: "AndroidPackager",
             dependencies: [
-                "AndroidHostModules", runtime("RuntimeABI"), runtime("RuntimeHost"),
+                "AndroidHostModules", "AndroidHostFiles", runtime("RuntimeABI"), runtime("RuntimeHost"),
                 .product(name: "Crypto", package: "swift-crypto"),
             ]
         ),
@@ -235,6 +241,11 @@ let package = Package(
         .testTarget(
             name: "AndroidHostWebKitTests",
             dependencies: ["AndroidHostWebKit"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostFilesTests",
+            dependencies: ["AndroidHostFiles"],
             swiftSettings: host
         ),
         .testTarget(
