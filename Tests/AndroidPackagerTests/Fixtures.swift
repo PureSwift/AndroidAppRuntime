@@ -68,9 +68,17 @@ enum Fixtures {
         return Data("!<arch>\n".utf8) + Data(header.utf8) + Data(object)
     }
 
-    /// A wasm module with only custom sections.
-    static func wasm(sections: [String: [UInt8]]) -> Data {
+    /// A wasm module with only custom sections, and function imports of
+    /// type 0 if there are any.
+    static func wasm(sections: [String: [UInt8]], imports: [(module: String, name: String)] = []) -> Data {
         var bytes: [UInt8] = [0, 0x61, 0x73, 0x6D, 1, 0, 0, 0]
+        if !imports.isEmpty {
+            var body: [UInt8] = [UInt8(imports.count)]
+            for (module, name) in imports {
+                body += [UInt8(module.utf8.count)] + Array(module.utf8) + [UInt8(name.utf8.count)] + Array(name.utf8) + [0, 0]
+            }
+            bytes += [2, UInt8(body.count)] + body
+        }
         for (name, contents) in sections.sorted(by: { $0.key < $1.key }) {
             let body = [UInt8(name.utf8.count)] + Array(name.utf8) + contents
             bytes += [0, UInt8(body.count)] + body
