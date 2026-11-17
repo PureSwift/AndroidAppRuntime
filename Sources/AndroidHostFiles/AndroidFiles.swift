@@ -97,12 +97,15 @@ public final class AndroidFiles: Files {
     private func run(_ callback: any FileCallback, _ operation: @escaping @Sendable (FileEngine) -> FileEngine.Outcome) {
         let engine = self.engine
         let deliver = configuration.deliver
-        // The callback is only touched again on the main thread, in `deliver`.
-        let callback = Unchecked(callback)
+        // The callback is the guest's, so only the main thread touches it,
+        // releasing it included: `deliver` takes it out, and what the
+        // worker's closures release is empty.
+        let held = Held(callback)
         configuration.work {
             let outcome = Unchecked(operation(engine))
             deliver {
-                outcome.value.answer(callback.value)
+                guard let callback = held.take() else { return }
+                outcome.value.answer(callback)
             }
         }
     }
@@ -151,6 +154,26 @@ public enum AndroidHostFiles: HostModule {
     public static func register(in registrar: some ContractRegistrar) {
         FilesProxy.register(AndroidFiles.self, in: registrar)
         FileCallbackProxy.registerInterface(in: registrar)
+    }
+}
+
+/// One of the runtime's objects, carried through work on another thread
+/// for the main thread to take out, so it's released there: a proxy's last
+/// release tells the runtime, which belongs to the main thread.
+final class Held<Value>: @unchecked Sendable {
+
+    private var value: Value?
+
+    /// Call on the main thread.
+    init(_ value: Value) {
+        self.value = value
+    }
+
+    /// The object, the caller's from here on; `nil` the second time. Call
+    /// on the main thread.
+    func take() -> Value? {
+        defer { value = nil }
+        return value
     }
 }
 
