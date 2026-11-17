@@ -1,8 +1,28 @@
 # Android host — Plan
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
-armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4) and files
-(§6.5) came after them.
+armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
+(§6.5) and defaults (§6.6) came after them.
+
+**Defaults:** AppRuntime's Defaults contract. A guest keeps small settings
+across launches, with `UserDefaults` and `@AppStorage`.
+
+- **How:** `AndroidHostDefaults` gives AppRuntime's `HostDefaults` a store
+  over `SharedPreferences`, in a file of the app's own. Each key is marked
+  with its value's kind, and bytes are kept as Base64 (§6.6).
+- **ExampleDefaults runs:** `Scripts/example-defaults.sh` packages
+  AppRuntime's `ExampleDefaults` and drives it on the emulator, reading the
+  preferences file with `run-as`.
+  - The launch count goes up at each start.
+  - A toggle, a name and a theme show at once, are in the file, and are
+    kept after the app goes to the background and starts again.
+  - Reset removes every key, from the screen and from the file.
+
+  All 19 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 11 Swift tests cover the marked keys, one kind per key,
+  empty values, the size limit, the keys listed, and Base64, against
+  preferences in memory.
 
 **Files:** AppRuntime's Files contract. A guest reads and writes its own
 files, and reads its bundle's resources, with an `async` `FileManager`.
@@ -507,6 +527,7 @@ input.
 | `AndroidHostGraphics` | `Surface` over EGL and `AChoreographer` (§6.3): `SurfaceHub` runs the frames and delivers input, `InputMapping` maps `MotionEvent`s and key codes |
 | `AndroidHostWebKit` | `WebContent` over `android.webkit.WebView` (§6.4): `AndroidWebContent` turns the view's reports into the contract's events, and `WebMapping` maps errors, navigations, resources and scripts |
 | `AndroidHostFiles` | `Files` (§6.5): `AndroidFiles` runs `HostFiles` for the writable directories and `BundleFiles` for the APK's assets, on one queue |
+| `AndroidHostDefaults` | `Defaults` (§6.6): `HostDefaults` over `AndroidDefaultsStorage`, which keeps values in `SharedPreferences` |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
 | `AndroidPackager`, `android-app` | The packager (§8) |
@@ -517,7 +538,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` and `WebPageNode` (the composables `GLSurface` and `WebView` nodes become) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, `DefaultsSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -794,12 +815,48 @@ resources. No capability is needed.
 - **One queue.** Every operation runs on one serial queue, the bundle's
   included, so a copy out of the bundle and a read of the copy happen in
   the order they were issued. Answers are posted to the main looper.
+  - The guest's callback is held for the main thread to take out, so
+    it's released there too, never by the worker's closure.
 - **Gradle's ignored assets.** By default Gradle leaves out assets whose
   names start with `.`, and folders whose names start with `_`. The
   packager sets `androidResources.ignoreAssetsPattern` so that they're
   kept, as they are in the bundle on every other host. Version-control
   folders, `.DS_Store`, `Thumbs.db` and backup files (`*~`) are still left
   out, and the index leaves them out too.
+
+### 6.6 Defaults
+
+AppRuntime's `Defaults` contract (Contracts/Defaults.md): the guest's
+`UserDefaults` and `@AppStorage`, which read and write at once, on the
+main thread. No capability is needed.
+
+- **`HostDefaults` over `SharedPreferences`.** AppRuntime's `HostDefaults`
+  has the contract's rules (an empty key is refused, keys are sorted by
+  their bytes). `AndroidHostDefaults` gives it `AndroidDefaultsStorage`,
+  over the Kotlin `DefaultsSystem`.
+- **A file of the app's own:**
+  `shared_prefs/org.pureswift.appruntime.defaults.xml`, apart from
+  anything else in the app. Android's Auto Backup takes it, where the user
+  has it on.
+- **Marked keys.** `SharedPreferences` has no byte type, so each key is
+  stored with its kind:
+
+  | Value | Stored |
+  |---|---|
+  | a string, such as `"true"` or `"0.5"` | `s:<key>`, as it is |
+  | bytes | `d:<key>`, as Base64 |
+
+  - Setting one kind removes the other, in the same edit.
+  - Keys in the file without a mark aren't the guest's, and aren't
+    listed. A marked key that holds something else, such as an `Int`,
+    reads as no value.
+- **Writes.** Each change is an edit that's applied: the value is there
+  at once, and written in the background. Android waits for those writes
+  when the Activity stops, so a value is there at the next launch, as the
+  contract asks. `apply()` doesn't report a full disk, so only a value over
+  64 KB is refused.
+- **Made on first use.** The Kotlin object, and the file's first read, wait
+  until the guest first reads or writes a value.
 
 ## 7. The SwiftUI player
 
@@ -975,6 +1032,9 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    `cacheDir` itself, and `temporary` inside it, in `cacheDir/tmp`. This
    host uses `cacheDir/Caches`, so the app's caches are apart from
    `WebView`'s and from `temporary`. The table could say so.
+9. **The defaults docs.** `Contracts/Defaults.md` keeps bytes "under a
+   marked key" on Android. This host marks both kinds (`s:` and `d:`), so a
+   guest's key can't be mistaken for a mark (§6.6).
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say

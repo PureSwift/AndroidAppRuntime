@@ -15,7 +15,13 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** files: an app can read and write its own files, in
+**Status:** defaults: an app can keep small settings across launches, with
+`UserDefaults` and `@AppStorage`, in its own `SharedPreferences` file.
+AppRuntime's `ExampleDefaults`, a settings screen, runs on the emulator.
+
+![ExampleDefaults in the emulator](Documentation/ExampleDefaults-android.png)
+
+Before that, files: an app can read and write its own files, in
 `filesDir` and `cacheDir`, and read its bundle's resources from the APK's
 assets. AppRuntime's `ExampleFiles`, a notebook kept as text files, runs on
 the emulator.
@@ -104,7 +110,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit and Files, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files and Defaults, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -171,6 +177,20 @@ Scripts/example-files.sh [--engine wasm2c]
 - Delete removes a note's file;
 - after the app starts again, the notes are still there, and
   `temporary` is empty.
+
+Defaults has its own check, with AppRuntime's `ExampleDefaults`:
+
+```sh
+Scripts/example-defaults.sh [--engine wasm2c]
+```
+
+`Scripts/example-defaults-check.py` drives it, and reads the app's
+`SharedPreferences` file with `adb shell run-as`:
+
+- the launch count goes up at each start;
+- a toggle, a name and a theme are in the file, under keys marked with
+  their kind, and are kept when the app starts again;
+- Reset removes every key.
 
 ## Packaging
 

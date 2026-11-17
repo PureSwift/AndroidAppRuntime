@@ -1,5 +1,6 @@
 import AndroidHost
 import AndroidHostBluetooth
+import AndroidHostDefaults
 import AndroidHostDevice
 import AndroidHostFiles
 import AndroidHostFormatting
@@ -14,6 +15,7 @@ import AndroidHostWebKit
 import CRuntime
 import DynamicRuntime
 import RuntimeABI
+import RuntimeHost
 import SwiftJava
 #if canImport(FoundationEssentials)
 import FoundationEssentials
@@ -42,6 +44,7 @@ public enum AndroidHostApp {
         SurfaceHub.shared.makeSystem = { GraphicsBridge.makeSystem() }
         SurfaceHub.shared.views = JavaGraphicsSystem()
         WebHub.shared.makeSystem = { JavaWebSystem() }
+        HostDefaults.storage = AndroidDefaultsStorage { JavaDefaultsSystem() }
     }
 
     /// The app's exports, from the sealed slice linked into this library.
