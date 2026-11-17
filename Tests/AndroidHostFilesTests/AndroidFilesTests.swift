@@ -296,6 +296,44 @@ struct MemoryAssets: AssetReader {
         func didFail(_ error: Int32) { Self.answers.append("\(name): error \(error)") }
     }
 
+    /// Counts its releases, and notes the thread of the last one.
+    final class Released: FileCallback {
+
+        nonisolated(unsafe) static var onMain: [Bool] = []
+
+        func didComplete() { }
+        func didRead(_ data: [UInt8]) { }
+        func didList(_ names: [String]) { }
+        func didGetAttributes(kind: Int32, size: Int64, modified: Int64) { }
+        func didFail(_ error: Int32) { }
+
+        deinit {
+            Self.onMain.append(Thread.isMainThread)
+        }
+    }
+
+    @Test @MainActor func callbacksAreReleasedOnTheMainThread() throws {
+        Released.onMain = []
+        let queue = DispatchQueue(label: "test.files.release")
+        try AndroidFiles.configure(AndroidFiles.Configuration(
+            directories: Self.directories(root),
+            assets: MemoryAssets(resources: Self.resources),
+            work: { job in queue.async { job(); Thread.sleep(forTimeInterval: 0.05) } }
+        ))
+        let files = AndroidFiles.shared()
+        for _ in 0..<5 {
+            files.attributes(Self.bundle, path: "welcome.txt", callback: Released())
+        }
+        // Answer each one while its worker's closure is still alive.
+        let deadline = Date().addingTimeInterval(5)
+        while Released.onMain.count < 5, Date() < deadline {
+            MainLooper.shared.drain()
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        queue.sync { }
+        #expect(Released.onMain == [true, true, true, true, true])
+    }
+
     @Test func answersOnTheMainLooperInOrder() async throws {
         Recorder.answers = []
         let queue = DispatchQueue(label: "test.files")
