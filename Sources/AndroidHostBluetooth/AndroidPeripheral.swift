@@ -2,7 +2,7 @@ import AndroidHost
 import DynamicBluetooth
 import DynamicRuntime
 
-/// The `Peripheral` contract over one `BluetoothGatt`.
+/// The `BluetoothPeripheral` contract over one `BluetoothGatt`.
 ///
 /// Android runs one GATT operation at a time, so the peripheral queues
 /// them, and every call gets exactly one delegate callback, also when the
@@ -10,13 +10,13 @@ import DynamicRuntime
 /// MTU before telling the central, so writes can be long from the start.
 /// While connected it holds the host's foreground service, which runs for
 /// apps that declare Bluetooth in the background (`HostBackground`).
-public final class AndroidPeripheral: Peripheral {
+public final class AndroidPeripheral: BluetoothPeripheral {
 
     let address: String
 
     private(set) weak var central: AndroidCentral?
 
-    private(set) var delegate: (any PeripheralDelegate)?
+    private(set) var delegate: (any BluetoothPeripheralDelegate)?
 
     var knownName: String?
 
@@ -93,11 +93,11 @@ public final class AndroidPeripheral: Peripheral {
 
     public func state() -> Int32 { peripheralState.rawValue }
 
-    public func setDelegate(_ delegate: (any PeripheralDelegate)?) {
+    public func setDelegate(_ delegate: (any BluetoothPeripheralDelegate)?) {
         self.delegate = delegate
     }
 
-    public func services() -> [any Service] { discovered }
+    public func services() -> [any BluetoothService] { discovered }
 
     // MARK: Connecting
 
@@ -209,23 +209,23 @@ public final class AndroidPeripheral: Peripheral {
         enqueue(.discoverServices)
     }
 
-    public func discoverCharacteristics(_ uuids: [BluetoothUUID], for service: any Service) {
+    public func discoverCharacteristics(_ uuids: [BluetoothUUID], for service: any BluetoothService) {
         guard let service = own(service) else { return }
         // Android discovers everything at once: report what's there.
         enqueue(.discoverCharacteristics(service))
     }
 
-    public func discoverDescriptors(for characteristic: any Characteristic) {
+    public func discoverDescriptors(for characteristic: any BluetoothCharacteristic) {
         guard let characteristic = own(characteristic) else { return }
         enqueue(.discoverDescriptors(characteristic))
     }
 
-    public func readValue(_ characteristic: any Characteristic) {
+    public func readValue(_ characteristic: any BluetoothCharacteristic) {
         guard let characteristic = own(characteristic) else { return }
         enqueue(.read(characteristic))
     }
 
-    public func writeValue(_ value: [UInt8], for characteristic: any Characteristic, type: Int32) {
+    public func writeValue(_ value: [UInt8], for characteristic: any BluetoothCharacteristic, type: Int32) {
         guard let characteristic = own(characteristic) else { return }
         let type = WriteType(rawValue: type) ?? .withResponse
         if type == .withoutResponse {
@@ -234,17 +234,17 @@ public final class AndroidPeripheral: Peripheral {
         enqueue(.write(characteristic, value, type))
     }
 
-    public func setNotifyValue(_ enabled: Bool, for characteristic: any Characteristic) {
+    public func setNotifyValue(_ enabled: Bool, for characteristic: any BluetoothCharacteristic) {
         guard let characteristic = own(characteristic) else { return }
         enqueue(.notify(characteristic, enabled))
     }
 
-    public func readDescriptor(_ descriptor: any Descriptor) {
+    public func readDescriptor(_ descriptor: any BluetoothDescriptor) {
         guard let descriptor = own(descriptor) else { return }
         enqueue(.readDescriptor(descriptor))
     }
 
-    public func writeDescriptor(_ value: [UInt8], for descriptor: any Descriptor) {
+    public func writeDescriptor(_ value: [UInt8], for descriptor: any BluetoothDescriptor) {
         guard let descriptor = own(descriptor) else { return }
         enqueue(.writeDescriptor(descriptor, value))
     }
@@ -267,15 +267,15 @@ public final class AndroidPeripheral: Peripheral {
         return true
     }
 
-    private func own(_ service: any Service) -> AndroidService? {
+    private func own(_ service: any BluetoothService) -> AndroidService? {
         HostObjects.own(service, as: AndroidService.self).flatMap { $0.owner === self ? $0 : nil }
     }
 
-    private func own(_ characteristic: any Characteristic) -> AndroidCharacteristic? {
+    private func own(_ characteristic: any BluetoothCharacteristic) -> AndroidCharacteristic? {
         HostObjects.own(characteristic, as: AndroidCharacteristic.self).flatMap { $0.owner?.owner === self ? $0 : nil }
     }
 
-    private func own(_ descriptor: any Descriptor) -> AndroidDescriptor? {
+    private func own(_ descriptor: any BluetoothDescriptor) -> AndroidDescriptor? {
         HostObjects.own(descriptor, as: AndroidDescriptor.self).flatMap { $0.owner?.owner?.owner === self ? $0 : nil }
     }
 
