@@ -448,7 +448,7 @@ The plan builds on four existing projects:
 | arm64-v8a (devices, Apple-silicon emulators) and x86_64 (Intel emulators, Chromebooks) | armeabi-v7a: the slice exists, but its sealed helpers haven't run on hardware |
 | Native slices linked into `libapp.so` | wasm2c (AppRuntime's shim, as on Darwin and Linux); WasmKit for development |
 | One Activity, one renderer | Multiple windows, split screen as separate scenes |
-| `Renderer`, the built-ins, Bluetooth `Central`, Location, Device, Networking, Formatting | Motion, NFC, the Bluetooth peripheral role, background modes |
+| `Renderer`, the built-ins, `BluetoothCentral`, Location, Device, Networking, Formatting | Motion, NFC, the Bluetooth peripheral role, background modes |
 | Debug APKs, signed release APKs and AABs | Play upload, Play Feature Delivery |
 
 ## 3. Process model
@@ -517,7 +517,7 @@ input.
 |---|---|
 | `AndroidHost` | `AppHost` (the checks, the built-ins, the modules, `rt_main`), `MainLooper`, `MainLooperClock`, `AndroidPermissions` (the runtime permissions of §6.1), `AndroidBundle`, `HostObjects` (a host's own objects behind the proxies the guest passes back), `HostLog` |
 | `AndroidHostUI` | The `Renderer` contract: it forwards `apply` / `replaceSubtree` bytes to Kotlin, and Kotlin's `event` / `rowCount` / `row` calls to the guest's `RendererDelegate` |
-| `AndroidHostBluetooth` | `Central`, `Peripheral`, `Service`, `Characteristic`, `Descriptor`, `Advertisement` over `BluetoothLeScanner` and `BluetoothGatt`, with the GATT queue and scan record parsing in Swift |
+| `AndroidHostBluetooth` | `BluetoothCentral`, `BluetoothPeripheral`, `BluetoothService`, `BluetoothCharacteristic`, `BluetoothDescriptor`, `BluetoothAdvertisement` over `BluetoothLeScanner` and `BluetoothGatt`, with the GATT queue and scan record parsing in Swift |
 | `AndroidHostLocation` | `LocationManager`, `Location`, `Heading` over `android.location` and the rotation vector sensor |
 | `AndroidHostDevice` | `Device` over `Build`, `BatteryManager`, `PowerManager`, `Configuration`, `Settings.Secure` and the sensors |
 | `AndroidHostNetworking` | `HTTPSession` and its values over `java.net.HttpURLConnection`; the URL contract over swift-foundation's `URL` |
@@ -621,7 +621,7 @@ Permissions by capability:
 
 | Contract | Android | Notes |
 |---|---|---|
-| Bluetooth `Central` and friends | `BluetoothLeScanner`, `BluetoothGatt`, through `:appruntime-contracts` | Not over AndroidBluetooth: neither its bindings nor its `GATT.CentralManager`, whose `async` and actor model doesn't fit a delegate contract on the main thread (§9.3). GATT operations are queued per device, one at a time, as Android requires (DynamicRuntime.md's host obligations). `connectGatt(…, TRANSPORT_LE, handler)` delivers `BluetoothGattCallback` on the main looper. `Peripheral.identifier` is the MAC address. Scan modes map to `ScanSettings` (`SCAN_MODE_LOW_POWER`, `BALANCED`, `LOW_LATENCY`). The connection timeout is a main-looper timer. `GATT_*` statuses map to `BluetoothError` |
+| `BluetoothCentral` and friends | `BluetoothLeScanner`, `BluetoothGatt`, through `:appruntime-contracts` | Not over AndroidBluetooth: neither its bindings nor its `GATT.CentralManager`, whose `async` and actor model doesn't fit a delegate contract on the main thread (§9.3). GATT operations are queued per device, one at a time, as Android requires (DynamicRuntime.md's host obligations). `connectGatt(…, TRANSPORT_LE, handler)` delivers `BluetoothGattCallback` on the main looper. `BluetoothPeripheral.identifier` is the MAC address. Scan modes map to `ScanSettings` (`SCAN_MODE_LOW_POWER`, `BALANCED`, `LOW_LATENCY`). The connection timeout is a main-looper timer. `GATT_*` statuses map to `BluetoothError` |
 | `LocationManager` | `android.location.LocationManager` | The fused provider when available (API 31+), otherwise GPS and network. Updates go through `requestLocationUpdates(…, Looper.getMainLooper())`. Google Play services is not used, so apps work on any device. Accuracy maps to `ACCURACY_FINE` / `ACCURACY_COARSE` and the provider choice. Full accuracy is a precise-location request on API 31+ |
 | `Device` | `Build`, `BatteryManager` (a sticky `ACTION_BATTERY_CHANGED` receiver while monitoring), `PowerManager`, `Configuration`, and the accelerometer and proximity sensors | `vendorIdentifier` is a name-based UUID of `Settings.Secure.ANDROID_ID`, which is scoped to the app's signing key, the closest match to `identifierForVendor`. The physical orientation comes from the accelerometer |
 | `HTTPSession` | `HttpURLConnection` on a host-owned executor | It uses the platform's TLS, proxy and network-security config. Results, redirects and challenges are posted to the main looper. A redirect asks the guest on the main thread while the worker waits, so the guest is still called synchronously |
