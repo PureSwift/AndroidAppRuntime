@@ -2,8 +2,8 @@ import AndroidHost
 import DynamicBluetooth
 import DynamicRuntime
 
-/// The `Service` contract: a discovered `BluetoothGattService`.
-public final class AndroidService: Service {
+/// The `BluetoothService` contract: a discovered `BluetoothGattService`.
+public final class AndroidService: BluetoothService {
 
     /// The instance ID.
     let id: Int32
@@ -47,16 +47,16 @@ public final class AndroidService: Service {
 
     public func isPrimary() -> Bool { primary }
 
-    public func characteristics() -> [any Characteristic] { children }
+    public func characteristics() -> [any BluetoothCharacteristic] { children }
 
     /// The peripheral, while its central keeps it.
-    public func peripheral() -> any Peripheral {
+    public func peripheral() -> any BluetoothPeripheral {
         owner ?? AndroidPeripheral.orphan
     }
 }
 
-/// The `Characteristic` contract.
-public final class AndroidCharacteristic: Characteristic {
+/// The `BluetoothCharacteristic` contract.
+public final class AndroidCharacteristic: BluetoothCharacteristic {
 
     let id: Int32
 
@@ -90,15 +90,15 @@ public final class AndroidCharacteristic: Characteristic {
 
     public func isNotifying() -> Bool { notifying }
 
-    public func descriptors() -> [any Descriptor] { descriptorList }
+    public func descriptors() -> [any BluetoothDescriptor] { descriptorList }
 
-    public func service() -> any Service {
+    public func service() -> any BluetoothService {
         owner ?? AndroidService(id: 0, uuid: fullUUID, primary: false, owner: nil)
     }
 }
 
-/// The `Descriptor` contract.
-public final class AndroidDescriptor: Descriptor {
+/// The `BluetoothDescriptor` contract.
+public final class AndroidDescriptor: BluetoothDescriptor {
 
     let fullUUID: String
 
@@ -120,13 +120,13 @@ public final class AndroidDescriptor: Descriptor {
 
     public func value() -> [UInt8]? { lastValue }
 
-    public func characteristic() -> any Characteristic {
+    public func characteristic() -> any BluetoothCharacteristic {
         owner ?? AndroidCharacteristic(id: 0, uuid: fullUUID, flags: 0, owner: nil)
     }
 }
 
-/// The `Advertisement` contract: a scan record's AD structures.
-public final class AndroidAdvertisement: Advertisement {
+/// The `BluetoothAdvertisement` contract: a scan record's AD structures.
+public final class AndroidAdvertisement: BluetoothAdvertisement {
 
     let data: AdvertisementData
 
@@ -186,20 +186,20 @@ public enum AndroidHostBluetooth: HostModule {
 
     public static var contracts: [ContractDescriptor] {
         [
-            CentralProxy.descriptor, CentralDelegateProxy.descriptor, PeripheralProxy.descriptor,
-            PeripheralDelegateProxy.descriptor, ServiceProxy.descriptor, CharacteristicProxy.descriptor,
-            DescriptorProxy.descriptor, AdvertisementProxy.descriptor,
+            BluetoothCentralProxy.descriptor, BluetoothCentralDelegateProxy.descriptor, BluetoothPeripheralProxy.descriptor,
+            BluetoothPeripheralDelegateProxy.descriptor, BluetoothServiceProxy.descriptor, BluetoothCharacteristicProxy.descriptor,
+            BluetoothDescriptorProxy.descriptor, BluetoothAdvertisementProxy.descriptor,
         ]
     }
 
     public static func register(in registrar: some ContractRegistrar) {
-        CentralProxy.register(AndroidCentral.self, in: registrar)
-        CentralDelegateProxy.registerInterface(in: registrar)
-        PeripheralProxy.register(AndroidPeripheral.self, in: registrar)
-        PeripheralDelegateProxy.registerInterface(in: registrar)
-        ServiceProxy.register(AndroidService.self, in: registrar)
-        CharacteristicProxy.register(AndroidCharacteristic.self, in: registrar)
-        DescriptorProxy.register(AndroidDescriptor.self, in: registrar)
-        AdvertisementProxy.register(AndroidAdvertisement.self, in: registrar)
+        BluetoothCentralProxy.register(AndroidCentral.self, in: registrar)
+        BluetoothCentralDelegateProxy.registerInterface(in: registrar)
+        BluetoothPeripheralProxy.register(AndroidPeripheral.self, in: registrar)
+        BluetoothPeripheralDelegateProxy.registerInterface(in: registrar)
+        BluetoothServiceProxy.register(AndroidService.self, in: registrar)
+        BluetoothCharacteristicProxy.register(AndroidCharacteristic.self, in: registrar)
+        BluetoothDescriptorProxy.register(AndroidDescriptor.self, in: registrar)
+        BluetoothAdvertisementProxy.register(AndroidAdvertisement.self, in: registrar)
     }
 }
