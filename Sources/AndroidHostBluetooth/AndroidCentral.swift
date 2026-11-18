@@ -2,7 +2,7 @@ import AndroidHost
 import DynamicBluetooth
 import DynamicRuntime
 
-/// The `Central` contract over `BluetoothLeScanner` and `BluetoothGatt`
+/// The `BluetoothCentral` contract over `BluetoothLeScanner` and `BluetoothGatt`
 /// (`Plan.md` §6.2), on the main looper.
 ///
 /// - **Authorization** is the `bluetooth` capability's runtime permissions:
@@ -13,14 +13,14 @@ import DynamicRuntime
 ///   nothing, so the sixth reports `scanThrottled` instead.
 /// - **Peripherals** are one object per address for the central, and their
 ///   identifier is the address.
-public final class AndroidCentral: Central {
+public final class AndroidCentral: BluetoothCentral {
 
     let hub: BluetoothHub
 
     let handle: Int64
 
     /// Kept strongly (`Plan.md` §6).
-    let delegate: any CentralDelegate
+    let delegate: any BluetoothCentralDelegate
 
     private(set) var scanning = false
 
@@ -37,7 +37,7 @@ public final class AndroidCentral: Central {
 
     private var lastState: CentralState?
 
-    init(delegate: any CentralDelegate, hub: BluetoothHub = .shared) {
+    init(delegate: any BluetoothCentralDelegate, hub: BluetoothHub = .shared) {
         self.delegate = delegate
         self.hub = hub
         self.handle = hub.nextHandle()
@@ -59,7 +59,7 @@ public final class AndroidCentral: Central {
     }
 
     /// Reports the state soon after, as CoreBluetooth does.
-    public static func make(_ delegate: any CentralDelegate) -> AndroidCentral {
+    public static func make(_ delegate: any BluetoothCentralDelegate) -> AndroidCentral {
         let central = AndroidCentral(delegate: delegate)
         MainLooper.shared.post { [weak central] in
             central?.update()
@@ -176,7 +176,7 @@ public final class AndroidCentral: Central {
         return peripheral
     }
 
-    public func connect(_ peripheral: any Peripheral, timeout: Int32) {
+    public func connect(_ peripheral: any BluetoothPeripheral, timeout: Int32) {
         guard let peripheral = own(peripheral) else {
             HostLog.error("Central.connect: a peripheral from another central")
             return
@@ -188,17 +188,17 @@ public final class AndroidCentral: Central {
         peripheral.connect(timeout: timeout)
     }
 
-    public func cancelConnection(_ peripheral: any Peripheral) {
+    public func cancelConnection(_ peripheral: any BluetoothPeripheral) {
         own(peripheral)?.cancelConnection()
     }
 
-    private func own(_ peripheral: any Peripheral) -> AndroidPeripheral? {
+    private func own(_ peripheral: any BluetoothPeripheral) -> AndroidPeripheral? {
         guard let peripheral = HostObjects.own(peripheral, as: AndroidPeripheral.self), peripheral.central === self else { return nil }
         return peripheral
     }
 
     /// Addresses this process saw or the system bonded.
-    public func retrievePeripherals(_ identifiers: [String]) -> [any Peripheral] {
+    public func retrievePeripherals(_ identifiers: [String]) -> [any BluetoothPeripheral] {
         let bonded = Set(hub.system.bondedAddresses())
         return identifiers.compactMap { identifier in
             let address = identifier.uppercased()
@@ -209,7 +209,7 @@ public final class AndroidCentral: Central {
 
     /// Every device connected over GATT: Android can't tell their services
     /// without connecting, so `services` doesn't filter them.
-    public func retrieveConnectedPeripherals(_ services: [BluetoothUUID]) -> [any Peripheral] {
+    public func retrieveConnectedPeripherals(_ services: [BluetoothUUID]) -> [any BluetoothPeripheral] {
         hub.system.connectedAddresses().map { peripheral($0.uppercased()) }
     }
 
