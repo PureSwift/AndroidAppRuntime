@@ -143,6 +143,15 @@ public final class AndroidFiles: Files {
         }, completion: completion)
     }
 
+    /// The APK asset a file of the bundle is, for another contract that's
+    /// handed one: a media player. A directory, or nothing, is `notFound`.
+    public func bundleAsset(_ path: String) throws(FileError) -> String {
+        guard BundleIndex.isValid(path), !path.isEmpty, case .file = try engine.bundle.kind(path) else {
+            throw .notFound
+        }
+        return BundleFiles.asset(path)
+    }
+
     /// The configured files. Before `configure`, every operation fails.
     public static func shared() -> AndroidFiles {
         if let current {
