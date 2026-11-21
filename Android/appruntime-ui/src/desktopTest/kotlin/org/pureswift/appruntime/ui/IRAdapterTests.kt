@@ -124,6 +124,22 @@ class IRAdapterTests {
     }
 
     @Test
+    fun mapsAVideoPlayerToTheShellsView() {
+        val player = IRNode("VideoPlayer", 2, mapOf("player" to IRValue.Int(4), "scaling" to IRValue.Str("fill"), "controls" to IRValue.Str("none")))
+        val node = show(IRNode("VStack", 1, children = listOf(player))).find("2")!!
+        assertEquals("Composable", node.type)
+        assertEquals(IRAdapter.VIDEO_PLAYER, (node.props["name"] as JsonPrimitive).content)
+        assertEquals(4, (node.props["player"] as JsonPrimitive).content.toInt())
+        assertEquals("fill", (node.props["scaling"] as JsonPrimitive).content)
+        assertEquals("none", (node.props["controls"] as JsonPrimitive).content)
+        assertEquals(emptyList(), node.children)
+        // Without its props, the platform's controls, fitted.
+        val plain = show(IRNode("VStack", 1, children = listOf(IRNode("VideoPlayer", 2)))).find("2")!!
+        assertEquals("fit", (plain.props["scaling"] as JsonPrimitive).content)
+        assertEquals("platform", (plain.props["controls"] as JsonPrimitive).content)
+    }
+
+    @Test
     fun mapsAWebViewToTheShellsView() {
         val root = show(IRNode("VStack", 1, children = listOf(IRNode("WebView", 2, mapOf("page" to IRValue.Int(3))))))
         val node = root.find("2")!!
