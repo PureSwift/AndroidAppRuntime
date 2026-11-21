@@ -154,7 +154,19 @@ class IRAdapter(var dark: Boolean = false) {
 
     // MARK: Nodes
 
+    /**
+     * A node, in the shell's selection composable when it has
+     * `textSelection`: the text inside it can be selected and copied with
+     * the platform's menu, or, when it's disabled, can't.
+     */
     private fun convert(n: IRNode): ViewNode {
+        val converted = convertNode(n)
+        val selection = n.modifiers.lastOrNull { it.kind == "textSelection" } ?: return converted
+        val name = if (selection.args["enabled"].bool != false) TEXT_SELECTION else NO_TEXT_SELECTION
+        return ViewNode("Composable", converted.id + ".selection", obj("name" to str(name)), emptyList(), listOf(converted))
+    }
+
+    private fun convertNode(n: IRNode): ViewNode {
         val id = idString(n.id)
         val mods = modifiers(n)
         fun node(type: String, vararg props: Pair<String, JsonElement?>, children: List<ViewNode> = convertAll(n.children), modifiers: List<ModifierNode> = mods, count: Int? = null) =
@@ -595,6 +607,10 @@ class IRAdapter(var dark: Boolean = false) {
 
         /** The registered composable a `WebView` node becomes. */
         const val WEB_VIEW = "org.pureswift.appruntime.WebView"
+
+        /** The registered composables a node with `textSelection` is in. */
+        const val TEXT_SELECTION = "org.pureswift.appruntime.TextSelection"
+        const val NO_TEXT_SELECTION = "org.pureswift.appruntime.NoTextSelection"
 
         /** The registered composable a `VideoPlayer` node becomes. */
         const val VIDEO_PLAYER = "org.pureswift.appruntime.VideoPlayer"
