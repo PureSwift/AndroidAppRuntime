@@ -113,7 +113,10 @@ struct FileEngine: @unchecked Sendable {
         guard BundleIndex.isValid(path) else {
             throw .invalidPath
         }
-        guard let destination = FileDirectory(rawValue: toDirectory) else {
+        // Android has no document picker yet, so no directory but the app's
+        // own is one a copy can go to.
+        let destination = FileDirectory(rawValue: toDirectory)
+        guard FileDirectory.allCases.contains(destination) else {
             throw .invalidPath
         }
         guard destination != .bundle else {
