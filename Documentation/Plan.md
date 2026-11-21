@@ -2,7 +2,36 @@
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
-(§6.5) and defaults (§6.6) came after them.
+(§6.5), defaults (§6.6) and documents (§6.8) came after them.
+
+**Documents:** AppRuntime's Documents contract. A guest asks the user for
+files, a folder, or a place to save, keeps access to them, and is opened
+with files from other apps. What the user picks is a directory `Files`
+reaches.
+
+- **How:** `AndroidHostDocuments` shows the Storage Access Framework's
+  pickers from the Activity. What's picked becomes a grant that
+  `AndroidHostFiles` reads and writes by content URI, walking a folder's
+  paths by display name. A bookmark is a persisted URI permission (§6.8).
+- **ExampleDocuments runs:** `Scripts/example-documents.sh` packages
+  AppRuntime's `ExampleDocuments`, with a manifest that asks for
+  `userFiles` and opens text, and drives it and Android's own pickers on
+  the emulator, checking the user's files with `adb shell`.
+  - A file is picked, changed and saved back.
+  - A copy is saved where the save picker says, and later saves go to the
+    copy.
+  - A folder is picked and listed, and a file in it is read.
+  - A cancelled picker changes nothing.
+  - Another app's `ACTION_EDIT` opens a file while the app runs, and
+    `ACTION_VIEW` opens one read-only as it starts.
+
+  All 39 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 26 Swift tests cover a document's paths, reads, writes,
+  folders, access, release, sizes, and moves and copies across documents
+  and the app's own directories, against a provider in memory; and the
+  pickers, saving, bookmarks and opened files against scripted pickers.
+  The packager's tests cover the intent filters.
 
 **Defaults:** AppRuntime's Defaults contract. A guest keeps small settings
 across launches, with `UserDefaults` and `@AppStorage`.
@@ -526,8 +555,9 @@ input.
 | `AndroidHostNFC` | `NFCReader`, `NFCTag` and NDEF over `NfcAdapter` reader mode |
 | `AndroidHostGraphics` | `Surface` over EGL and `AChoreographer` (§6.3): `SurfaceHub` runs the frames and delivers input, `InputMapping` maps `MotionEvent`s and key codes |
 | `AndroidHostWebKit` | `WebContent` over `android.webkit.WebView` (§6.4): `AndroidWebContent` turns the view's reports into the contract's events, and `WebMapping` maps errors, navigations, resources and scripts |
-| `AndroidHostFiles` | `Files` (§6.5): `AndroidFiles` runs `HostFiles` for the writable directories and `BundleFiles` for the APK's assets, on one queue |
+| `AndroidHostFiles` | `Files` (§6.5): `AndroidFiles` runs `HostFiles` for the writable directories, `BundleFiles` for the APK's assets and `DocumentFiles` for the documents the user gave (§6.8), on one queue |
 | `AndroidHostDefaults` | `Defaults` (§6.6): `HostDefaults` over `AndroidDefaultsStorage`, which keeps values in `SharedPreferences` |
+| `AndroidHostDocuments` | `Documents` (§6.8): `AndroidDocuments` and its grants over `DocumentPickerSystem`, the Storage Access Framework's pickers |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
 | `AndroidPackager`, `android-app` | The packager (§8) |
@@ -538,7 +568,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` and `WebPageNode` (the composables `GLSurface` and `WebView` nodes become) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, `DefaultsSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, `DefaultsSystem`, `DocumentSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -858,6 +888,67 @@ main thread. No capability is needed.
 - **Made on first use.** The Kotlin object, and the file's first read, wait
   until the guest first reads or writes a value.
 
+### 6.8 Documents
+
+AppRuntime's `Documents` contract (Contracts/Documents.md): pickers for
+files, a folder, and a place to save; bookmarks; and files the app is
+opened with. It needs `userFiles`, which prompts for nothing.
+
+- **Android has no paths.** A document is a content URI, so AppRuntime's
+  `HostDocuments`, which grants paths in `HostFiles`, doesn't fit. This
+  host implements the four contracts itself (`AndroidHostDocuments`), and
+  `Files` reaches a document through its own grants (`DocumentGrants` in
+  `AndroidHostFiles`). Directories from 256 up are grants, as the contract
+  says; releasing the guest's `DocumentGrant` ends one, and its directory
+  answers `notPermitted`.
+- **The pickers** are `ACTION_OPEN_DOCUMENT`, `ACTION_OPEN_DOCUMENT_TREE`
+  and `ACTION_CREATE_DOCUMENT`, started from the Activity, whose
+  `onActivityResult` hands the URIs to Swift.
+  - One shows at a time: a second is `busy`. With no Activity, a picker is
+    `notAllowed`.
+  - Types become MIME types; an extension Android has no MIME type for
+    shows every file, since a picker shows more, never fewer.
+  - `.readWrite` asks for write permission when the file is picked. A
+    document is writable when the app asked for it and the provider says
+    it takes writes (`FLAG_SUPPORTS_WRITE`, or `FLAG_DIR_SUPPORTS_CREATE`
+    for a folder).
+  - A folder is the document at the top of the tree that was picked.
+- **Saving** shows the save picker, which makes an empty document; the
+  file is then copied into it on the files queue, and the new document is
+  the guest's. The source is checked to be a file before the picker shows.
+- **Files on a document.** `DocumentFiles`, on `AndroidFiles`' queue, has
+  `HostFiles`' rules for a grant:
+  - a file document is its directory's empty path;
+  - a folder's paths are walked by display name, through
+    `DocumentsContract`'s children; writes make the folders on the way;
+  - the picked document itself can't be removed: `invalidPath`;
+  - a replacing write is truncate-and-write (`"wt"`), since a provider has
+    nothing atomic;
+  - a range read seeks the descriptor, and reads through from the start
+    where the provider's descriptor can't seek;
+  - moves and copies with a document on either side are reads, writes and
+    removes, so a move is a copy and then a remove.
+
+  The Kotlin `DocumentSystem` makes the calls. Swift calls it from the
+  files queue: its object is made on the main thread, where its class can
+  be found. A `SecurityException` is `notPermitted`, a missing document
+  `notFound`, and an I/O failure `unavailable`.
+- **Bookmarks** are persisted URI permissions
+  (`takePersistableUriPermission`), under a random key kept in
+  `shared_prefs/org.pureswift.appruntime.documents.xml`. Android keeps 512
+  for an app (128 before API 30): past that, `limitReached`. A document
+  that can't be persisted, as one the app was opened with, is
+  `unsupported`. Resolving a key whose permission is gone is
+  `notPermitted`. Forgetting releases the permission when no other
+  bookmark has it.
+- **Opened with.** The packager writes an `ACTION_VIEW` filter, with
+  `ACTION_EDIT` for an editor, for each of the app's document types that
+  has MIME types (`RTDocumentTypes`), on `content` URIs. The Activity sends
+  such an intent's URI to the guest's documents, writable for an
+  `ACTION_EDIT` that grants writing. They wait, ungranted, until the guest
+  listens. A provider that isn't a `DocumentsProvider`, as MediaStore or
+  another app's `FileProvider`, gives what columns it has.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1035,6 +1126,11 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 9. **The defaults docs.** `Contracts/Defaults.md` keeps bytes "under a
    marked key" on Android. This host marks both kinds (`s:` and `d:`), so a
    guest's key can't be mistaken for a mark (§6.6).
+10. **The documents docs.** `Contracts/Documents.md` says Android needs a
+   host of its own; this one has it (§6.8). Its Android row could add that
+   a folder's paths are walked by display name, which two children can
+   share, and that `HostFiles.path(of:path:)` has no Android counterpart:
+   another contract handed a document asks `AndroidFiles.contentURI(of:path:)`.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say
