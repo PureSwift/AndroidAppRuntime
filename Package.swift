@@ -75,6 +75,7 @@ let package = Package(
         .library(name: "AndroidHostNotifications", targets: ["AndroidHostNotifications"]),
         .library(name: "AndroidHostDocuments", targets: ["AndroidHostDocuments"]),
         .library(name: "AndroidHostMedia", targets: ["AndroidHostMedia"]),
+        .library(name: "AndroidHostClipboard", targets: ["AndroidHostClipboard"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
         .executable(name: "android-app", targets: ["AndroidAppTool"]),
@@ -208,13 +209,21 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostClipboard",
+            dependencies: [
+                "AndroidHost", runtime("DynamicClipboard"), runtime("RuntimeClipboard"), runtime("DynamicRuntime"),
+                runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostModules",
             dependencies: [
                 "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
                 "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
                 "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles",
                 "AndroidHostDefaults", "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications",
-                "AndroidHostMedia",
+                "AndroidHostMedia", "AndroidHostClipboard",
             ],
             swiftSettings: host
         ),
@@ -225,7 +234,7 @@ let package = Package(
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
                 "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles", "AndroidHostDefaults",
                 "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications", "AndroidHostMedia",
-                runtime("CRuntime"),
+                "AndroidHostClipboard", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -319,6 +328,14 @@ let package = Package(
             dependencies: [
                 "AndroidHostMedia", "AndroidHostFiles", runtime("DynamicMedia"), runtime("RuntimeMedia"),
                 runtime("DynamicFiles"), runtime("RuntimeHost"), runtime("RuntimeNative"),
+            ],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostClipboardTests",
+            dependencies: [
+                "AndroidHostClipboard", "AndroidHostFiles", runtime("DynamicClipboard"), runtime("RuntimeClipboard"),
+                runtime("DynamicFiles"), runtime("RuntimeHost"),
             ],
             swiftSettings: host
         ),
