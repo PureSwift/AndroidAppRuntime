@@ -181,6 +181,13 @@ class IRAdapter(var dark: Boolean = false) {
             "GLSurface" -> node("Composable", "name" to str(GL_SURFACE), "surface" to num(n["surface"].long ?: 0), "flexible" to bool(true), children = emptyList())
             // The shell registers the view a page shows in (WebPageView).
             "WebView" -> node("Composable", "name" to str(WEB_VIEW), "page" to num(n["page"].long ?: 0), "flexible" to bool(true), children = emptyList())
+            // The shell registers the view a player shows in (PlayerView).
+            // Its size is the frame the guest gives it.
+            "VideoPlayer" -> node(
+                "Composable", "name" to str(VIDEO_PLAYER), "player" to num(n["player"].long ?: 0),
+                "scaling" to str(n["scaling"].string ?: "fit"), "controls" to str(n["controls"].string ?: "platform"),
+                children = emptyList(),
+            )
             "Shape" -> node(
                 "Shape",
                 "shape" to str(n["shape"].string ?: "rectangle"),
@@ -588,6 +595,9 @@ class IRAdapter(var dark: Boolean = false) {
 
         /** The registered composable a `WebView` node becomes. */
         const val WEB_VIEW = "org.pureswift.appruntime.WebView"
+
+        /** The registered composable a `VideoPlayer` node becomes. */
+        const val VIDEO_PLAYER = "org.pureswift.appruntime.VideoPlayer"
 
         /** The node ID as composeui's string ID: the u64, in decimal. */
         fun idString(id: Long): String = id.toULong().toString()
