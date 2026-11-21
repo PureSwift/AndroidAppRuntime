@@ -1,2 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Shares an image the app copied with the app it's pasted into (Plan.md §6.11). -->
+        <provider
+            android:name="org.pureswift.appruntime.contracts.ClipboardFileProvider"
+            android:authorities="${applicationId}.appruntime.clipboard"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/appruntime_clipboard_paths" />
+        </provider>
+    </application>
+</manifest>
