@@ -61,6 +61,25 @@ import Testing
         #expect(three.glESVersion == "0x00030000")
     }
 
+    @Test func declaresTheNotificationsReceiverAndPermissions() throws {
+        let plain = ManifestWriter(bundle: try bundle())
+        #expect(!plain.manifest.contains("NotificationReceiver"))
+        let writer = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["notifications"]])))
+        #expect(writer.permissions.map(\.name) == [
+            "android.permission.POST_NOTIFICATIONS", "android.permission.RECEIVE_BOOT_COMPLETED",
+        ])
+        let document = try XMLDocument(xmlString: writer.manifest)
+        let receivers = try document.nodes(forXPath: "/manifest/application/receiver/@android:name").compactMap(\.stringValue)
+        #expect(receivers == ["org.pureswift.appruntime.contracts.NotificationReceiver"])
+        let actions = try document.nodes(forXPath: "/manifest/application/receiver/intent-filter/action/@android:name").compactMap(\.stringValue)
+        #expect(actions.contains("android.intent.action.BOOT_COMPLETED"))
+        #expect(actions.contains("android.intent.action.TIMEZONE_CHANGED"))
+        let exact = ManifestWriter(bundle: try bundle(Fixtures.info([
+            "RTCapabilities": ["notifications"], "RTCapabilityOptions": ["notifications": ["exactTiming": "true"]],
+        ])))
+        #expect(exact.permissions.map(\.name).last == "android.permission.SCHEDULE_EXACT_ALARM")
+    }
+
     @Test func declaresTheForegroundServiceForBackgroundWork() throws {
         let plain = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["location", "bluetooth"]])))
         #expect(plain.foregroundServiceTypes.isEmpty)
