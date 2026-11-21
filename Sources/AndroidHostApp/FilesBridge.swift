@@ -14,6 +14,8 @@ open class JavaFileSystem: JavaObject {
 
     @JavaMethod open func cacheDirectory() -> String
 
+    @JavaMethod open func databaseDirectory() -> String
+
     @JavaMethod open func assets() -> JavaAssetManager!
 }
 

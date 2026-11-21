@@ -23,6 +23,13 @@ editor, runs on the emulator.
 
 ![ExampleDocuments in the emulator](Documentation/ExampleDocuments-android.png)
 
+Before that, the model store: an app can keep the objects of a CoreModel
+model across launches, and fetch, count and change them, in a SQLite
+database per store. AppRuntime's `ExampleModel`, to-dos in lists, runs on
+the emulator.
+
+![ExampleModel in the emulator](Documentation/ExampleModel-android.png)
+
 Before that, defaults: an app can keep small settings across launches, with
 `UserDefaults` and `@AppStorage`, in its own `SharedPreferences` file.
 AppRuntime's `ExampleDefaults`, a settings screen, runs on the emulator.
@@ -118,7 +125,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults and Documents, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore and Documents, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -199,6 +206,21 @@ Scripts/example-defaults.sh [--engine wasm2c]
 - a toggle, a name and a theme are in the file, under keys marked with
   their kind, and are kept when the app starts again;
 - Reset removes every key.
+
+The model store has its own check, with AppRuntime's `ExampleModel`:
+
+```sh
+Scripts/example-model.sh [--engine wasm2c]
+```
+
+`Scripts/example-model-check.py` drives it, and reads the app's
+`databases/todos.sqlite` with `adb shell run-as` and Python's `sqlite3`:
+
+- the first launch makes two lists, as rows, and the file keeps the model;
+- to-dos are added, marked done, filtered, counted through their list,
+  cleared and deleted, on screen and in their rows;
+- a to-do with no title is refused;
+- after the app starts again, in a new process, everything is as it was.
 
 Documents has its own check, with AppRuntime's `ExampleDocuments` and a
 manifest of its own, `Scripts/ExampleDocuments/App.swift`:

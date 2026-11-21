@@ -7,6 +7,7 @@ import AndroidHostFiles
 import AndroidHostFormatting
 import AndroidHostGraphics
 import AndroidHostLocation
+import AndroidHostModelStore
 import AndroidHostMotion
 import AndroidHostNFC
 import AndroidHostNetworking
@@ -30,6 +31,7 @@ public enum AndroidHostModules {
         AndroidHostWebKit.self,
         AndroidHostFiles.self,
         AndroidHostDefaults.self,
+        AndroidHostModelStore.self,
         AndroidHostDocuments.self,
     ]
 }

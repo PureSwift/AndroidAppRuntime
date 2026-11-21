@@ -73,6 +73,7 @@ public enum AndroidHostApp {
         AndroidHostUI.surface = surface
         connectModules()
         FilesBridge.configure()
+        ModelStoreBridge.configure()
         DocumentsBridge.configure()
         let host = AppHost(info: info, modules: modules)
         do {

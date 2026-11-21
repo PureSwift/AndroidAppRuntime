@@ -71,6 +71,7 @@ let package = Package(
         .library(name: "AndroidHostWebKit", targets: ["AndroidHostWebKit"]),
         .library(name: "AndroidHostFiles", targets: ["AndroidHostFiles"]),
         .library(name: "AndroidHostDefaults", targets: ["AndroidHostDefaults"]),
+        .library(name: "AndroidHostModelStore", targets: ["AndroidHostModelStore"]),
         .library(name: "AndroidHostDocuments", targets: ["AndroidHostDocuments"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
@@ -84,6 +85,11 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-java.git", branch: "main"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
+        // The model store's backend (§6.7). SQLite from 0.2.3 nests a
+        // transaction in another, which makes a batch all or nothing.
+        .package(url: "https://github.com/PureSwift/CoreModel.git", from: "2.11.1"),
+        .package(url: "https://github.com/PureSwift/CoreModel-SQLite.git", from: "0.3.3"),
+        .package(url: "https://github.com/PureSwift/SQLite.git", from: "0.2.3"),
     ],
     targets: [
         .target(
@@ -166,6 +172,16 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostModelStore",
+            dependencies: [
+                runtime("DynamicCoreModel"), runtime("RuntimeCoreModel"), runtime("DynamicRuntime"), runtime("RuntimeHost"),
+                .product(name: "CoreModel", package: "CoreModel"),
+                .product(name: "CoreModelSQLite", package: "CoreModel-SQLite"),
+                .product(name: "SQLite", package: "SQLite"),
+            ],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostDocuments",
             dependencies: [
                 "AndroidHost", "AndroidHostFiles", runtime("DynamicDocuments"), runtime("DynamicFiles"),
@@ -179,7 +195,7 @@ let package = Package(
                 "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
                 "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
                 "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles",
-                "AndroidHostDefaults", "AndroidHostDocuments",
+                "AndroidHostDefaults", "AndroidHostModelStore", "AndroidHostDocuments",
             ],
             swiftSettings: host
         ),
@@ -189,7 +205,7 @@ let package = Package(
                 "AndroidHostModules", "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting",
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
                 "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles", "AndroidHostDefaults",
-                "AndroidHostDocuments", runtime("CRuntime"),
+                "AndroidHostModelStore", "AndroidHostDocuments", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -273,6 +289,15 @@ let package = Package(
         .testTarget(
             name: "AndroidHostDefaultsTests",
             dependencies: ["AndroidHostDefaults"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostModelStoreTests",
+            dependencies: [
+                "AndroidHostModelStore", runtime("DynamicCoreModel"), runtime("RuntimeCoreModel"), runtime("RuntimeNative"),
+                .product(name: "CoreModel", package: "CoreModel"),
+                .product(name: "SQLite", package: "SQLite"),
+            ],
             swiftSettings: host
         ),
         .testTarget(

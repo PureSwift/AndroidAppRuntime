@@ -2,7 +2,8 @@
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
-(§6.5), defaults (§6.6) and documents (§6.8) came after them.
+(§6.5), defaults (§6.6), the model store (§6.7) and documents (§6.8) came
+after them.
 
 **Documents:** AppRuntime's Documents contract. A guest asks the user for
 files, a folder, or a place to save, keeps access to them, and is opened
@@ -32,6 +33,35 @@ reaches.
   and the app's own directories, against a provider in memory; and the
   pickers, saving, bookmarks and opened files against scripted pickers.
   The packager's tests cover the intent filters.
+
+
+**Model store:** AppRuntime's ModelStore contract. A guest keeps objects
+of a CoreModel model across launches, and fetches, counts and changes
+them, with `RuntimeModelStorage` and `Query`.
+
+- **How:** `AndroidHostModelStore` gives AppRuntime's `HostModelStore` a
+  CoreModel-SQLite database per store, `databases/<name>.sqlite`. Each
+  database keeps the model it was made with, so a changed model is
+  migrated, refused or reset by the contract's rules. A batch is one
+  transaction (§6.7).
+- **ExampleModel runs:** `Scripts/example-model.sh` packages AppRuntime's
+  `ExampleModel` and drives it on the emulator, reading the database with
+  `run-as` and Python's `sqlite3`.
+  - The first launch makes two lists, as rows, and the file keeps the
+    model.
+  - To-dos are added, marked done, filtered, counted through their list,
+    cleared and deleted, on screen and in their rows.
+  - A to-do with no title is refused.
+  - After a restart, in a new process, everything is as it was, and no
+    list is made again.
+
+  All 33 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 14 Swift tests run each kind of value, about 600
+  requests, batches, opening, migration, indexes and errors against real
+  databases in a temporary directory, and every request's answer is
+  checked against CoreModel's own evaluator. One runs a guest's store
+  through the runtime.
 
 **Defaults:** AppRuntime's Defaults contract. A guest keeps small settings
 across launches, with `UserDefaults` and `@AppStorage`.
@@ -557,6 +587,7 @@ input.
 | `AndroidHostWebKit` | `WebContent` over `android.webkit.WebView` (§6.4): `AndroidWebContent` turns the view's reports into the contract's events, and `WebMapping` maps errors, navigations, resources and scripts |
 | `AndroidHostFiles` | `Files` (§6.5): `AndroidFiles` runs `HostFiles` for the writable directories, `BundleFiles` for the APK's assets and `DocumentFiles` for the documents the user gave (§6.8), on one queue |
 | `AndroidHostDefaults` | `Defaults` (§6.6): `HostDefaults` over `AndroidDefaultsStorage`, which keeps values in `SharedPreferences` |
+| `AndroidHostModelStore` | `ModelStore` (§6.7): `HostModelStore` over `SQLiteModelStorageProvider`, a CoreModel-SQLite database per store, with `Pushdown` deciding what SQLite answers |
 | `AndroidHostDocuments` | `Documents` (§6.8): `AndroidDocuments` and its grants over `DocumentPickerSystem`, the Storage Access Framework's pickers |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
@@ -568,7 +599,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` and `WebPageNode` (the composables `GLSurface` and `WebView` nodes become) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, `DefaultsSystem`, `DocumentSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -888,6 +919,61 @@ main thread. No capability is needed.
 - **Made on first use.** The Kotlin object, and the file's first read, wait
   until the guest first reads or writes a value.
 
+### 6.7 Model store
+
+AppRuntime's `ModelStore` contract (Contracts/Persistence.md): a guest
+opens a store by name with its model, and fetches, counts, inserts and
+deletes objects, one at a time or in a batch. Each call is answered later,
+on the main thread. No capability is needed.
+
+- **`HostModelStore` over CoreModel-SQLite.** AppRuntime's
+  `HostModelStore` runs a store's operations one at a time, off the main
+  thread, and answers through the main looper. `AndroidHostModelStore`
+  gives it `SQLiteModelStorageProvider`, whose stores are CoreModel-SQLite
+  `SQLiteDatabase`s. It's Swift, so the Kotlin side only says where the
+  databases go (`FileSystem.databaseDirectory()`).
+- **A file per store:** `databases/<name>.sqlite`, in `getDatabasePath`'s
+  directory, which Auto Backup takes where the app allows it. SQLite is
+  the PureSwift/SQLite package's own build (SQLCipher, unencrypted), not
+  `android.database.sqlite`.
+- **The file keeps its model**, as JSON in the table `_appruntime_model`.
+  No entity can have that name: `open` refuses it as `invalidModel`.
+  Opening with another model compares them, in one order:
+  - only entities or properties added or removed: the objects are copied
+    into a new database of the new model;
+  - anything else: `migrationRequired`, or, when the guest asked to reset,
+    an empty database.
+
+  A new database is made beside the old one, as `<name>.sqlite.new`, and
+  renamed over it, so a store is never half made. The `SQLiteModelStorage`
+  open before is closed, and fails anything still sent to it with
+  `unavailable`.
+- **A batch is one transaction.** `BEGIN IMMEDIATE`, each insert and
+  delete in order, then `COMMIT`; on any error, `ROLLBACK`, so a failed
+  batch changes nothing. CoreModel-SQLite wraps each insert and delete in a
+  transaction of its own; PureSwift/SQLite 0.2.3 nests those as savepoints
+  (§9.4).
+- **What SQLite answers.** A request returns what CoreModel's in-memory
+  evaluator returns (Persistence.md, "Requests"). CoreModel-SQLite 0.3.3
+  disagrees with it on several things (§9.4), so `Pushdown` gives SQLite
+  only what it answers the same:
+
+  | SQLite | CoreModel, on what SQLite narrowed it to |
+  |---|---|
+  | an entity's own attribute compared with a constant by `==`, `<`, `<=`, `>`, `>=` (not a bool or bytes for the order), a to-one compared with an object or null by `==`, and `AND`, `OR` and `NOT` of those | sorts, string operators, options, `!=`, `IN`, arithmetic, modifiers, key paths through a relationship |
+
+  An `AND` gives SQLite the conditions it can take and CoreModel the rest.
+  A request SQLite answers whole, with no sort, keeps its limit and
+  offset there; any other is evaluated after the fetch. A key path through
+  a relationship fetches the other entities too.
+- **Counts** are made without the limit and offset, which are applied to
+  the number after (§9.4).
+- **Indexes** the guest declares are made on the columns: attributes and
+  to-ones. An index naming a to-many is left out.
+- **Errors.** SQLite's codes become the contract's: a full disk is
+  `outOfSpace`; a corrupt file or one that isn't a database, `corrupted`;
+  no permission, a read-only file or one that can't be opened,
+  `unavailable`. A file with no model table is `corrupted`.
 ### 6.8 Documents
 
 AppRuntime's `Documents` contract (Contracts/Documents.md): pickers for
@@ -1126,7 +1212,16 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 9. **The defaults docs.** `Contracts/Defaults.md` keeps bytes "under a
    marked key" on Android. This host marks both kinds (`s:` and `d:`), so a
    guest's key can't be mistaken for a mark (§6.6).
-10. **The documents docs.** `Contracts/Documents.md` says Android needs a
+10. **The persistence docs.** `Contracts/Persistence.md` keeps Android's
+   stores in `android.database.sqlite`, and says Android's SQLite takes no
+   custom functions. This host is Swift over CoreModel-SQLite and
+   PureSwift/SQLite's own build (§6.7), as the Linux column says. Its
+   "For a host in Swift" section could also say what a `ModelStorage` over
+   SQLite has to answer in memory, as `Pushdown` does.
+11. **The documents contract.** `FileDirectory` is a struct now, so a
+   picked document can be a directory. A copy out of the bundle into one
+   goes through `FileEngine`'s moves and copies across documents (§6.8).
+12. **The documents docs.** `Contracts/Documents.md` says Android needs a
    host of its own; this one has it (§6.8). Its Android row could add that
    a folder's paths are walked by display name, which two children can
    share, and that `HostFiles.path(of:path:)` has no Android counterpart:
@@ -1200,6 +1295,22 @@ for using them.
   the 6.4.2 Android SDK. The upstream projects are pinned to `main` and
   `master` branches today, so this host pins revisions in
   `Package.resolved`.
+
+### 9.4 CoreModel-SQLite and SQLite
+
+- **SQLite 0.2.3** nests `transaction()` as a savepoint when one is open
+  ([PureSwift/SQLite#7](https://github.com/PureSwift/SQLite/pull/7)), so a
+  batch is all or nothing (§6.7).
+- **CoreModel-SQLite 0.3.3** answers some requests differently from
+  CoreModel's evaluator. `Pushdown` keeps them from SQLite; fixed there,
+  more of a request could go to SQLite:
+  - `count` puts the limit and offset on `SELECT COUNT(*)`, whose one row
+    an offset skips, and a debug build traps;
+  - an empty `OR` is true;
+  - nulls sort first, where CoreModel orders them as equal to anything;
+  - `beginsWith`, `contains` and `like` ignore case, through `LIKE`;
+  - `IN` against a string matches nothing;
+  - a key path through a to-one, such as `team.name`, matches nothing.
 
 ## 10. Testing
 
