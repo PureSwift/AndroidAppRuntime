@@ -15,7 +15,14 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** media players: an app can play songs and videos from its
+**Status:** secrets and sign-in: an app can keep a token or a password
+encrypted with a key in the Android Keystore, and sign in through the
+provider's page in a Custom Tab. AppRuntime's `ExampleSignIn` runs on the
+emulator.
+
+![ExampleSignIn in the emulator](Documentation/ExampleSignIn-android.png)
+
+Before that, media players: an app can play songs and videos from its
 bundle, its files, a picked document or the network, follow where
 playback is, and show a video with `VideoPlayer`, through Media3's
 `ExoPlayer`. AppRuntime's `ExampleMedia`, a small music player, runs on
@@ -140,7 +147,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications and MediaPlayer, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer, Secrets and WebAuthentication, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -292,6 +299,24 @@ service with `adb shell dumpsys audio`:
 - Next and Previous change songs, and a song that ends starts the next;
 - leaving the front pauses it, and the app says why;
 - the video player is Media3's `PlayerView`.
+
+Secrets and sign-in have their own check, with AppRuntime's `ExampleSignIn`
+and a manifest of its own, `Scripts/ExampleSignIn/App.swift`:
+
+```sh
+Scripts/example-signin.sh [--engine wasm2c]
+```
+
+`Scripts/example-signin-check.py` drives it and Chrome's Custom Tab, and
+plays the provider, which doesn't exist: it reads the page's `state` from
+the tab's intent and sends the redirect to the app's scheme.
+
+- the first read of the Keychain finds no token, without an error;
+- Sign In shows the page in a Custom Tab, and Back from it cancels;
+- the redirect reaches the app, which keeps its token encrypted in
+  `no_backup`;
+- after a restart the token is there, and Sign Out removes it;
+- a private sign-in shows its page too.
 
 ## Packaging
 

@@ -1,4 +1,5 @@
 @_exported import AndroidHost
+import AndroidHostAuthentication
 import AndroidHostBluetooth
 import AndroidHostDefaults
 import AndroidHostDevice
@@ -13,6 +14,7 @@ import AndroidHostMotion
 import AndroidHostNFC
 import AndroidHostNotifications
 import AndroidHostNetworking
+import AndroidHostSecrets
 import AndroidHostUI
 import AndroidHostWebKit
 
@@ -37,5 +39,7 @@ public enum AndroidHostModules {
         AndroidHostDocuments.self,
         AndroidHostNotifications.self,
         AndroidMedia.self,
+        AndroidHostSecrets.self,
+        AndroidHostAuthentication.self,
     ]
 }
