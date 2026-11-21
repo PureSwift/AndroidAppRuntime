@@ -2,8 +2,8 @@
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
-(§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8) and
-media players (§6.10) came after them.
+(§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
+notifications (§6.9) and media players (§6.10) came after them.
 
 **Media players:** AppRuntime's MediaPlayer contract. A guest plays songs
 and videos from its bundle, its files, a picked document or the network,
@@ -33,6 +33,40 @@ follows where playback is, and shows a player's picture with
   scripted players. The IR adapter's tests cover the `VideoPlayer` node.
 - **AppRuntime:** `HostMediaPlayback.findFile`, which this host sets, came
   from this work.
+
+**Notifications:** AppRuntime's Notifications contract. A guest asks the
+user's leave, shows a notification now or schedules one, gives it buttons,
+and hears what the user did, with the app open or closed.
+
+- **How:** `AndroidHostNotifications` gives AppRuntime's
+  `HostNotifications` a presenter over `NotificationManager` and
+  `AlarmManager`. Each category is a channel. A scheduled notification is
+  kept on disk and posted when its alarm starts the app's process, with no
+  guest; a tap or a button opens the app with it (§6.9). Push is
+  `unsupported`: there's no Firebase Cloud Messaging yet.
+- **ExampleNotifications runs:** `Scripts/example-notifications.sh`
+  packages AppRuntime's `ExampleNotifications`, kitchen timers, with a
+  manifest that asks for `notifications`, and drives it and the
+  notification shade on the emulator, reading what's posted and the
+  alarms with `dumpsys`.
+  - Allow shows Android's prompt, and the answer is the app's.
+  - A notification shown now is in the default channel; the app hears of
+    it, and a tap in the shade opens the app with it.
+  - A timer sets an alarm, and Cancel takes it away.
+  - With the app's process killed, a timer's alarm starts it and posts
+    the notification with its buttons; Stop opens the app, which stops
+    the timer.
+  - Registering for push is `unsupported`.
+
+  All 29 checks pass both from the native slice and from `App.wasm`
+  through wasm2c. The check waits for a real alarm, so it takes up to
+  ten minutes.
+- **Unit tests:** 15 Swift tests cover permission, exact timing, channels,
+  posting, the foreground presentation, scheduling, replacing, limits,
+  alarms and repeats, calendar triggers in the device's time zone,
+  restarts, and responses that wait for the guest, against a scripted
+  platform. The packager's tests cover the manifest's receiver and
+  permissions.
 
 **Documents:** AppRuntime's Documents contract. A guest asks the user for
 files, a folder, or a place to save, keeps access to them, and is opened
@@ -616,6 +650,7 @@ input.
 | `AndroidHostWebKit` | `WebContent` over `android.webkit.WebView` (§6.4): `AndroidWebContent` turns the view's reports into the contract's events, and `WebMapping` maps errors, navigations, resources and scripts |
 | `AndroidHostFiles` | `Files` (§6.5): `AndroidFiles` runs `HostFiles` for the writable directories, `BundleFiles` for the APK's assets and `DocumentFiles` for the documents the user gave (§6.8), on one queue |
 | `AndroidHostDefaults` | `Defaults` (§6.6): `HostDefaults` over `AndroidDefaultsStorage`, which keeps values in `SharedPreferences` |
+| `AndroidHostNotifications` | `Notifications` and `PushNotifications` (§6.9): AppRuntime's `HostNotifications` over `AndroidNotificationCenter`, which keeps scheduled requests and posts them through `NotificationPlatform` |
 | `AndroidHostModelStore` | `ModelStore` (§6.7): `HostModelStore` over `SQLiteModelStorageProvider`, a CoreModel-SQLite database per store, with `Pushdown` deciding what SQLite answers |
 | `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem` |
 | `AndroidHostDocuments` | `Documents` (§6.8): `AndroidDocuments` and its grants over `DocumentPickerSystem`, the Storage Access Framework's pickers |
@@ -629,7 +664,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1065,6 +1100,59 @@ opened with. It needs `userFiles`, which prompts for nothing.
   listens. A provider that isn't a `DocumentsProvider`, as MediaStore or
   another app's `FileProvider`, gives what columns it has.
 
+### 6.9 Notifications
+
+AppRuntime's `Notifications` and `PushNotifications` contracts
+(Contracts/Notifications.md). They need `notifications`.
+
+- **`HostNotifications` over Android.** AppRuntime's `HostNotifications`
+  checks each request, keeps responses until the guest listens, and turns
+  records into values. `AndroidHostNotifications` gives it
+  `AndroidNotificationCenter`, whose platform is the Kotlin
+  `NotificationSystem`: Swift decides what to post and when, and Kotlin
+  makes the calls.
+- **Permission** is `POST_NOTIFICATIONS` from Android 13, asked once
+  through `AndroidPermissions`, and the app's switch in Settings always:
+  turned off, the status is `denied`. Before 13 there's only the switch.
+- **Categories are channels,** `rt.c.<identifier>`, and a notification
+  with none, or an unknown one, is in `rt.default`, named for the app.
+  `passive` is `IMPORTANCE_LOW`, `active` `IMPORTANCE_DEFAULT`, and
+  `timeSensitive` `IMPORTANCE_HIGH`. A sound of `.none` makes the channel
+  silent. A named sound plays the default one: a channel takes a URI, and
+  the bundle's files have none yet. The categories are kept, so a
+  notification posted with the app closed has its buttons.
+- **Showing.** Each notification is posted with its identifier as the tag.
+  A tap and each button open the Activity with the notification in the
+  intent; a text button is a `RemoteInput`. The Activity hands it to
+  `HostNotifications.responded`, and a button's notification leaves the
+  shade. A `.background` button opens the app too, until BackgroundTasks
+  can run the guest with no window.
+- **Scheduling.** A request with a trigger is kept in
+  `noBackupFilesDir/org.pureswift.appruntime.notifications.json`, and its
+  next time, from `HostNotificationTrigger.nextDate` in the device's time
+  zone, is an `AlarmManager` alarm for `NotificationReceiver`. When it
+  fires, the process starts if it has to; `libapp.so` is loaded by the
+  Application, so Swift posts it, with no guest, and sets a repeating one
+  again, skipping the times it missed. The packager declares the receiver
+  for `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET` and
+  `TIMEZONE_CHANGED`: every alarm is set again, a calendar trigger's at its
+  time in the new zone, and what came due meanwhile is shown.
+  - Alarms are exact (`setExactAndAllowWhileIdle`) when the user allows
+    it, and within minutes otherwise. With `exactTiming` the manifest asks
+    for `SCHEDULE_EXACT_ALARM`, and `requestExactTiming` opens its setting
+    and answers when the app comes forward again.
+  - An app keeps 500 alarms; past that, `add` fails with `limitReached`.
+- **In front,** a notification is posted unless the guest's foreground
+  presentation has neither `.banner` nor `.list`, and silently without
+  `.sound`; the guest hears of every one while it runs.
+- **Not here:** a number on the app's icon, which Android doesn't have
+  (a notification's own number is its badge); and push, which needs
+  Firebase Cloud Messaging and the app's `google-services.json`, so
+  registering is `unsupported`.
+- **Foundation.** `RuntimeNotifications` imports Foundation, for its
+  calendar and named time zones, where this host's own code uses
+  FoundationEssentials. `libapp.so` grows by about 2 MB.
+
 ### 6.10 Media players
 
 AppRuntime's `MediaPlayback` contract (Contracts/MediaPlayer.md): a player
@@ -1302,7 +1390,12 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    a folder's paths are walked by display name, which two children can
    share, and that `HostFiles.path(of:path:)` has no Android counterpart:
    another contract handed a document asks `AndroidFiles.contentURI(of:path:)`.
-13. **The media docs.** `Contracts/MediaPlayer.md` says Android implements
+13. **The notifications docs.** `Contracts/Notifications.md` says Android
+   implements the contracts itself, not being written in Swift; this host
+   is, and uses `HostNotifications` (§6.9). `RuntimeNotifications` could
+   import FoundationEssentials where it can, as the rest of `RuntimeHost`
+   does.
+14. **The media docs.** `Contracts/MediaPlayer.md` says Android implements
    the contract itself, not being written in Swift; this host is, and
    uses `HostMediaPlayback` with `findFile` (§6.10).
 8. **The web docs.** `Contracts/WebKit.md` says no host implements

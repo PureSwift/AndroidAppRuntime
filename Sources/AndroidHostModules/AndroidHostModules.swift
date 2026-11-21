@@ -11,6 +11,7 @@ import AndroidHostMedia
 import AndroidHostModelStore
 import AndroidHostMotion
 import AndroidHostNFC
+import AndroidHostNotifications
 import AndroidHostNetworking
 import AndroidHostUI
 import AndroidHostWebKit
@@ -34,6 +35,7 @@ public enum AndroidHostModules {
         AndroidHostDefaults.self,
         AndroidHostModelStore.self,
         AndroidHostDocuments.self,
+        AndroidHostNotifications.self,
         AndroidMedia.self,
     ]
 }

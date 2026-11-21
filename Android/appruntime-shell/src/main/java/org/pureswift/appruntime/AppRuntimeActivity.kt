@@ -31,13 +31,14 @@ import androidx.compose.ui.unit.dp
 import com.pureswift.swiftui.Render
 import org.pureswift.appruntime.contracts.DocumentSystem
 import org.pureswift.appruntime.contracts.HostContext
+import org.pureswift.appruntime.contracts.NotificationSystem
 import org.pureswift.appruntime.contracts.PermissionSystem
 
 /**
  * The app's one Activity (Documentation/Plan.md §5): starts the guest with
  * the app's keys from `assets/rt/Info.plist`, shows the renderer's surface,
- * and reports the lifecycle, URLs, files it's opened with, pickers' results
- * and the back gesture.
+ * and reports the lifecycle, URLs, files it's opened with, pickers' results,
+ * taps on notifications and the back gesture.
  *
  * It declares `configChanges` for rotation, dark mode and locale, so those
  * don't restart it; if the system recreates it anyway, the guest keeps
@@ -162,8 +163,9 @@ open class AppRuntimeActivity : ComponentActivity() {
         if (AppRuntime.started) NativeHost.setLanguages(languages())
     }
 
-    /** A file goes to the guest's documents; any other URL to the app. */
+    /** A notification's tap or button goes to the guest's notifications, a file to its documents, any other URL to the app. */
     private fun openURL(intent: Intent?) {
+        if (intent != null && AppRuntime.started && NotificationSystem.open(intent)) return
         if (intent != null && AppRuntime.started && DocumentSystem.open(intent)) return
         val url = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return
         if (AppRuntime.started && !NativeHost.open(url)) {
