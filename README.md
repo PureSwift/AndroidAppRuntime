@@ -15,7 +15,15 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** documents: an app can ask the user for files, a folder or a
+**Status:** media players: an app can play songs and videos from its
+bundle, its files, a picked document or the network, follow where
+playback is, and show a video with `VideoPlayer`, through Media3's
+`ExoPlayer`. AppRuntime's `ExampleMedia`, a small music player, runs on
+the emulator.
+
+![ExampleMedia in the emulator](Documentation/ExampleMedia-android.png)
+
+Before that, documents: an app can ask the user for files, a folder or a
 place to save, with Android's own pickers, and read and write what's picked
 with `FileManager`. It can keep access with bookmarks, and be opened with
 files from other apps. AppRuntime's `ExampleDocuments`, a small text
@@ -125,7 +133,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore and Documents, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents and MediaPlayer, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -239,6 +247,23 @@ reads the user's files in `Documents/ExampleDocuments` with `adb shell`:
 - a cancelled picker changes nothing;
 - `ACTION_EDIT` from another app opens a file while the app runs, and
   `ACTION_VIEW` opens one read-only as it starts.
+
+The media players have their own check, with AppRuntime's `ExampleMedia`
+and a manifest of its own, `Scripts/ExampleMedia/App.swift`. It makes the
+songs, so it needs LAME (`brew install lame`):
+
+```sh
+Scripts/example-media.sh [--engine wasm2c]
+```
+
+`Scripts/example-media-check.py` drives it, and asks Android's audio
+service with `adb shell dumpsys audio`:
+
+- the first song loads from the APK's assets, plays and pauses, and
+  Android hears its player start;
+- Next and Previous change songs, and a song that ends starts the next;
+- leaving the front pauses it, and the app says why;
+- the video player is Media3's `PlayerView`.
 
 ## Packaging
 
