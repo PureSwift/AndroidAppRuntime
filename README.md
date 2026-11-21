@@ -15,7 +15,15 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** defaults: an app can keep small settings across launches, with
+**Status:** documents: an app can ask the user for files, a folder or a
+place to save, with Android's own pickers, and read and write what's picked
+with `FileManager`. It can keep access with bookmarks, and be opened with
+files from other apps. AppRuntime's `ExampleDocuments`, a small text
+editor, runs on the emulator.
+
+![ExampleDocuments in the emulator](Documentation/ExampleDocuments-android.png)
+
+Before that, defaults: an app can keep small settings across launches, with
 `UserDefaults` and `@AppStorage`, in its own `SharedPreferences` file.
 AppRuntime's `ExampleDefaults`, a settings screen, runs on the emulator.
 
@@ -110,7 +118,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files and Defaults, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults and Documents, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -191,6 +199,24 @@ Scripts/example-defaults.sh [--engine wasm2c]
 - a toggle, a name and a theme are in the file, under keys marked with
   their kind, and are kept when the app starts again;
 - Reset removes every key.
+
+Documents has its own check, with AppRuntime's `ExampleDocuments` and a
+manifest of its own, `Scripts/ExampleDocuments/App.swift`:
+
+```sh
+Scripts/example-documents.sh [--engine wasm2c]
+```
+
+`Scripts/example-documents-check.py` drives it and Android's pickers, and
+reads the user's files in `Documents/ExampleDocuments` with `adb shell`:
+
+- a picked file opens, and Save writes the change back to it;
+- Save a Copy saves where the save picker says, and later saves go to the
+  copy;
+- a picked folder is listed, and a file in it is read;
+- a cancelled picker changes nothing;
+- `ACTION_EDIT` from another app opens a file while the app runs, and
+  `ACTION_VIEW` opens one read-only as it starts.
 
 ## Packaging
 
