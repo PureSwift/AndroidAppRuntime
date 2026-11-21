@@ -42,6 +42,21 @@ public struct UniversalBundle {
     /// `RTCapabilityOptions`: `required`, location's `access`, ….
     public let capabilityOptions: [String: [String: String]]
 
+    /// `RTDocumentTypes`: the files the app opens.
+    public let documentTypes: [DocumentType]
+
+    /// A kind of file the app opens: its MIME types, MIME groups and
+    /// extensions, and whether it changes them (`Editor`) or shows them.
+    public struct DocumentType: Equatable, Sendable {
+        public var types: [String]
+        public var isEditor: Bool
+
+        public init(types: [String], isEditor: Bool) {
+            self.types = types
+            self.isEditor = isEditor
+        }
+    }
+
     public init(url: URL) throws(PackagerError) {
         self.url = url.standardizedFileURL
         let plist = url.appendingPathComponent("Info.plist")
@@ -80,6 +95,9 @@ public struct UniversalBundle {
         let extras = dictionary["RTPlatformExtras"] as? [String: [String: Any]]
         extraManifest = extras?["android"]?["extraManifest"] as? String
         capabilityOptions = dictionary["RTCapabilityOptions"] as? [String: [String: String]] ?? [:]
+        documentTypes = (dictionary["RTDocumentTypes"] as? [[String: Any]] ?? []).map {
+            DocumentType(types: $0["Types"] as? [String] ?? [], isEditor: $0["Role"] as? String == "editor")
+        }
     }
 
     /// The ABI's sealed slice, if the bundle has one.
