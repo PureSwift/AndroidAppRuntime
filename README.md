@@ -15,7 +15,14 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** the model store: an app can keep the objects of a CoreModel
+**Status:** notifications: an app can ask the user's leave, show a
+notification now or schedule one, give it buttons, and hear what the user
+did, with the app open or closed. AppRuntime's `ExampleNotifications`,
+kitchen timers, runs on the emulator.
+
+![ExampleNotifications in the emulator](Documentation/ExampleNotifications-android.png)
+
+Before that, the model store: an app can keep the objects of a CoreModel
 model across launches, and fetch, count and change them, in a SQLite
 database per store. AppRuntime's `ExampleModel`, to-dos in lists, runs on
 the emulator.
@@ -117,7 +124,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults and ModelStore, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore and Notifications, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -213,6 +220,27 @@ Scripts/example-model.sh [--engine wasm2c]
   cleared and deleted, on screen and in their rows;
 - a to-do with no title is refused;
 - after the app starts again, in a new process, everything is as it was.
+
+Notifications have their own check, with AppRuntime's
+`ExampleNotifications` and a manifest of its own,
+`Scripts/ExampleNotifications/App.swift`:
+
+```sh
+Scripts/example-notifications.sh [--engine wasm2c]
+```
+
+`Scripts/example-notifications-check.py` drives it and the notification
+shade, and reads what's posted and the alarms with `adb shell dumpsys`:
+
+- Allow shows Android's prompt, and the answer is the app's;
+- a notification shown now is in the default channel, the app hears of
+  it, and a tap in the shade opens the app with it;
+- a timer sets an alarm, and Cancel takes it away;
+- with the app's process killed, a timer's alarm posts the notification
+  with its buttons, and Stop opens the app, which stops it;
+- registering for push is `unsupported`.
+
+It waits for a real alarm, so it takes up to ten minutes.
 
 ## Packaging
 
