@@ -218,12 +218,13 @@ private func mainLooperCallback(_ fd: Int32, _ events: Int32, _ context: UnsafeM
 }
 #endif
 
-/// A `pthread` mutex: `post` is called from any thread.
-final class Lock {
+/// A `pthread` mutex: `post` is called from any thread, and so are the
+/// documents' grants.
+public final class Lock: @unchecked Sendable {
 
     private let mutex = UnsafeMutablePointer<pthread_mutex_t>.allocate(capacity: 1)
 
-    init() {
+    public init() {
         pthread_mutex_init(mutex, nil)
     }
 
@@ -232,7 +233,7 @@ final class Lock {
         mutex.deallocate()
     }
 
-    func withLock<R>(_ body: () throws -> R) rethrows -> R {
+    public func withLock<R>(_ body: () throws -> R) rethrows -> R {
         pthread_mutex_lock(mutex)
         defer { pthread_mutex_unlock(mutex) }
         return try body()

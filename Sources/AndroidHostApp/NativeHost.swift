@@ -75,6 +75,7 @@ public enum AndroidHostApp {
         connectModules()
         FilesBridge.configure()
         ModelStoreBridge.configure()
+        DocumentsBridge.configure()
         NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
         let host = AppHost(info: info, modules: modules)
         do {

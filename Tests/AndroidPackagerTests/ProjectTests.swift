@@ -80,6 +80,40 @@ import Testing
         #expect(exact.permissions.map(\.name).last == "android.permission.SCHEDULE_EXACT_ALARM")
     }
 
+    @Test func opensTheAppsDocumentTypesByMIMEType() throws {
+        let plain = ManifestWriter(bundle: try bundle())
+        #expect(!plain.manifest.contains("android.intent.action.VIEW"))
+        let info = Fixtures.info([
+            "RTCapabilities": ["userFiles"],
+            "RTDocumentTypes": [
+                ["Name": "Image", "Types": ["image/*"], "Role": "viewer"],
+                ["Name": "Text", "Types": ["text/plain", ".md"], "Role": "editor"],
+                // Only extensions: Android can't match it, so it's left out.
+                ["Name": "Track", "Types": [".gpx"], "Role": "viewer"],
+            ],
+        ])
+        let writer = ManifestWriter(bundle: try bundle(info))
+        #expect(writer.bundle.documentTypes == [
+            .init(types: ["image/*"], isEditor: false),
+            .init(types: ["text/plain", ".md"], isEditor: true),
+            .init(types: [".gpx"], isEditor: false),
+        ])
+        #expect(writer.permissions.isEmpty)
+        let document = try XMLDocument(xmlString: writer.manifest)
+        let filters = try document.nodes(forXPath: "/manifest/application/activity/intent-filter")
+        // The launcher's, the images' and the text's.
+        #expect(filters.count == 3)
+        let actions = try document.nodes(forXPath: "/manifest/application/activity/intent-filter/action/@android:name").compactMap(\.stringValue)
+        #expect(actions == [
+            "android.intent.action.MAIN",
+            "android.intent.action.VIEW",
+            "android.intent.action.VIEW", "android.intent.action.EDIT",
+        ])
+        let mimeTypes = try document.nodes(forXPath: "//data/@android:mimeType").compactMap(\.stringValue)
+        #expect(mimeTypes == ["image/*", "text/plain"])
+        #expect(try document.nodes(forXPath: "//data/@android:scheme").compactMap(\.stringValue) == ["content", "content"])
+    }
+
     @Test func declaresTheForegroundServiceForBackgroundWork() throws {
         let plain = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["location", "bluetooth"]])))
         #expect(plain.foregroundServiceTypes.isEmpty)
