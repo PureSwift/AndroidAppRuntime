@@ -85,6 +85,12 @@ public struct ManifestWriter {
         }
         if capabilities.contains("notifications") {
             add(Permission("android.permission.POST_NOTIFICATIONS"))
+            // Scheduled notifications are set again after a restart.
+            add(Permission("android.permission.RECEIVE_BOOT_COMPLETED"))
+            if bundle.capabilityOptions["notifications"]?["exactTiming"] == "true" {
+                // The user's setting, from Android 12: requestExactTiming opens it.
+                add(Permission("android.permission.SCHEDULE_EXACT_ALARM"))
+            }
         }
         if capabilities.contains("camera") {
             add(Permission("android.permission.CAMERA"))
@@ -202,11 +208,33 @@ public struct ManifestWriter {
                             <action android:name="android.intent.action.MAIN" />
                             <category android:name="android.intent.category.LAUNCHER" />
                         </intent-filter>
-                    </activity>\(service)
+                    </activity>\(service)\(notificationReceiver)
                 </application>
             </manifest>
             """)
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    // MARK: Notifications
+
+    /// The receiver for scheduled notifications' alarms, and for setting
+    /// them again after a restart, an update, or a change of the clock.
+    var notificationReceiver: String {
+        guard bundle.info.capabilities.contains(where: { $0.rawValue == "notifications" }) else { return "" }
+        return """
+
+                <!-- Posts scheduled notifications with the app closed (Plan.md §6.9). -->
+                <receiver
+                    android:name="org.pureswift.appruntime.contracts.NotificationReceiver"
+                    android:exported="false">
+                    <intent-filter>
+                        <action android:name="android.intent.action.BOOT_COMPLETED" />
+                        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                        <action android:name="android.intent.action.TIME_SET" />
+                        <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                    </intent-filter>
+                </receiver>
+        """
     }
 
     // MARK: Strings
