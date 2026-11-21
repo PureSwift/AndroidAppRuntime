@@ -1,5 +1,6 @@
 import AndroidHost
 import AndroidHostBluetooth
+import AndroidHostClipboard
 import AndroidHostDefaults
 import AndroidHostDevice
 import AndroidHostFiles
@@ -77,6 +78,7 @@ public enum AndroidHostApp {
         FilesBridge.configure()
         ModelStoreBridge.configure()
         DocumentsBridge.configure()
+        AndroidHostClipboard.configure(AndroidClipboardPlatform(system: JavaClipboardSystem()))
         NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
         let host = AppHost(info: info, modules: modules)
         // Players report times on the guest's clock. Playing on in the
