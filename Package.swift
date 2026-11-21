@@ -72,6 +72,7 @@ let package = Package(
         .library(name: "AndroidHostFiles", targets: ["AndroidHostFiles"]),
         .library(name: "AndroidHostDefaults", targets: ["AndroidHostDefaults"]),
         .library(name: "AndroidHostModelStore", targets: ["AndroidHostModelStore"]),
+        .library(name: "AndroidHostDocuments", targets: ["AndroidHostDocuments"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
         .executable(name: "android-app", targets: ["AndroidAppTool"]),
@@ -181,12 +182,20 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostDocuments",
+            dependencies: [
+                "AndroidHost", "AndroidHostFiles", runtime("DynamicDocuments"), runtime("DynamicFiles"),
+                runtime("DynamicRuntime"), runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostModules",
             dependencies: [
                 "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
                 "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
                 "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles",
-                "AndroidHostDefaults", "AndroidHostModelStore",
+                "AndroidHostDefaults", "AndroidHostModelStore", "AndroidHostDocuments",
             ],
             swiftSettings: host
         ),
@@ -196,7 +205,7 @@ let package = Package(
                 "AndroidHostModules", "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting",
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
                 "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles", "AndroidHostDefaults",
-                "AndroidHostModelStore", runtime("CRuntime"),
+                "AndroidHostModelStore", "AndroidHostDocuments", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -270,6 +279,11 @@ let package = Package(
         .testTarget(
             name: "AndroidHostFilesTests",
             dependencies: ["AndroidHostFiles"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostDocumentsTests",
+            dependencies: ["AndroidHostDocuments", "AndroidHostFiles", runtime("DynamicDocuments"), runtime("DynamicFiles")],
             swiftSettings: host
         ),
         .testTarget(

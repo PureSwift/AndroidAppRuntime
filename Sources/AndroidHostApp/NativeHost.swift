@@ -74,6 +74,7 @@ public enum AndroidHostApp {
         connectModules()
         FilesBridge.configure()
         ModelStoreBridge.configure()
+        DocumentsBridge.configure()
         let host = AppHost(info: info, modules: modules)
         do {
             try host.prepare()

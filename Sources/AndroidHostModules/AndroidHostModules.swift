@@ -2,6 +2,7 @@
 import AndroidHostBluetooth
 import AndroidHostDefaults
 import AndroidHostDevice
+import AndroidHostDocuments
 import AndroidHostFiles
 import AndroidHostFormatting
 import AndroidHostGraphics
@@ -31,5 +32,6 @@ public enum AndroidHostModules {
         AndroidHostFiles.self,
         AndroidHostDefaults.self,
         AndroidHostModelStore.self,
+        AndroidHostDocuments.self,
     ]
 }
