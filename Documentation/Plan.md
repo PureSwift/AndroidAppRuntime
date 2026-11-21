@@ -2,8 +2,37 @@
 
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
-(§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8) and
-notifications (§6.9) came after them.
+(§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
+notifications (§6.9) and media players (§6.10) came after them.
+
+**Media players:** AppRuntime's MediaPlayer contract. A guest plays songs
+and videos from its bundle, its files, a picked document or the network,
+follows where playback is, and shows a player's picture with
+`VideoPlayer`.
+
+- **How:** `AndroidHostMedia` gives AppRuntime's `HostMediaPlayback` a
+  Media3 `ExoPlayer` per player, which takes audio focus as media does and
+  pauses when headphones are unplugged. A `VideoPlayer` node is the
+  player's `PlayerView`. A file of the bundle is an `asset:///` URI, and a
+  picked document its content URI (§6.10).
+- **ExampleMedia runs:** `Scripts/example-media.sh` makes three
+  eight-second songs, packages AppRuntime's `ExampleMedia` with a manifest
+  that asks for `audio` and `network`, and drives it on the emulator,
+  checking Android's audio service with `dumpsys audio`.
+  - The first song loads from the APK's assets, plays and pauses, and
+    Android hears its player start.
+  - Next and Previous change songs, and a song that ends starts the next.
+  - Leaving the front pauses it, and the app says why.
+  - The video player is a `PlayerView`.
+
+  All 18 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 7 Swift tests cover making and releasing players,
+  finding the bundle's files and a picked document's, what Android
+  reports, seeks answered once, settings, and the background, against
+  scripted players. The IR adapter's tests cover the `VideoPlayer` node.
+- **AppRuntime:** `HostMediaPlayback.findFile`, which this host sets, came
+  from this work.
 
 **Notifications:** AppRuntime's Notifications contract. A guest asks the
 user's leave, shows a notification now or schedules one, gives it buttons,
@@ -623,6 +652,7 @@ input.
 | `AndroidHostDefaults` | `Defaults` (§6.6): `HostDefaults` over `AndroidDefaultsStorage`, which keeps values in `SharedPreferences` |
 | `AndroidHostNotifications` | `Notifications` and `PushNotifications` (§6.9): AppRuntime's `HostNotifications` over `AndroidNotificationCenter`, which keeps scheduled requests and posts them through `NotificationPlatform` |
 | `AndroidHostModelStore` | `ModelStore` (§6.7): `HostModelStore` over `SQLiteModelStorageProvider`, a CoreModel-SQLite database per store, with `Pushdown` deciding what SQLite answers |
+| `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem` |
 | `AndroidHostDocuments` | `Documents` (§6.8): `AndroidDocuments` and its grants over `DocumentPickerSystem`, the Storage Access Framework's pickers |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
@@ -632,9 +662,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface` and `WebPageNode` (the composables `GLSurface` and `WebView` nodes become) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `NotificationSystem` with `NotificationReceiver`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1123,6 +1153,52 @@ AppRuntime's `Notifications` and `PushNotifications` contracts
   calendar and named time zones, where this host's own code uses
   FoundationEssentials. `libapp.so` grows by about 2 MB.
 
+### 6.10 Media players
+
+AppRuntime's `MediaPlayback` contract (Contracts/MediaPlayer.md): a player
+per `MediaPlayer`, `AudioPlayer` or `VideoPlayer`, which loads one source,
+plays, pauses, seeks, and reports its state and time. It needs `audio`,
+which prompts for nothing, and a URL needs `network`.
+
+- **`HostMediaPlayback` over Media3.** AppRuntime's `HostMediaPlayback`
+  checks and finds each source, remembers a play that came early, answers
+  each seek once and stamps each time report with the guest's clock.
+  `AndroidHostMedia` gives it an `AndroidMediaEngine` per player, which
+  drives a Media3 `ExoPlayer` in the Kotlin `MediaSystem` by the player's
+  identifier. What the player does comes back through `MediaNatives`.
+- **Where a file is.** Android's files aren't all paths, so the host sets
+  `HostMediaPlayback.findFile`:
+  - the bundle's are `asset:///rt/resources/…`, which Media3 reads from
+    the APK, checked against the bundle's index first;
+  - a picked document's is its content URI (§6.8), found by asking its
+    provider on the main thread;
+  - the app's own are paths, as `HostFiles` has them.
+
+  `loadData` writes the bytes to the app's cache, with an extension for
+  their MIME type, and plays the file.
+- **As media.** Each player has `USAGE_MEDIA` attributes and takes audio
+  focus: another app's sound pauses it as `interrupted`, and Media3 plays
+  again when focus comes back. Unplugged headphones pause it as
+  `routeChanged`. A pause from the player's own controls is `user`; the
+  guest's is `requested`. When the app goes to the background, every
+  player pauses, as `background`.
+- **Time.** While playing, the time and the buffer are reported at the
+  guest's interval from a main-looper tick, and at once on a seek, a loop,
+  and each start and stop.
+- **Formats.** `canPlay` says `probably` for MP3, AAC in MP4, WAV and
+  H.264 in MP4 or QuickTime, and `maybe` for WebM, Ogg, Opus, FLAC,
+  Matroska and 3GPP, which need the device's decoder. HLS needs Media3's
+  HLS module, which isn't included, so it's `no`.
+- **`VideoPlayer`.** The IR adapter makes the node the shell's registered
+  composable, `VideoPlayerNode`: a `PlayerView` showing the player the
+  node names, with Media3's controls unless the node says `none`, fitted
+  or zoomed to fill. When the node goes, the view lets the player go, and
+  it keeps playing.
+- **Not here:** playing on in the background, and what's playing on the
+  lock screen, which are NowPlaying's: `canPlayInBackground` is false. A
+  video's picture was shown with no source loaded; a real video wasn't
+  played on the emulator.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1319,6 +1395,9 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    is, and uses `HostNotifications` (§6.9). `RuntimeNotifications` could
    import FoundationEssentials where it can, as the rest of `RuntimeHost`
    does.
+14. **The media docs.** `Contracts/MediaPlayer.md` says Android implements
+   the contract itself, not being written in Swift; this host is, and
+   uses `HostMediaPlayback` with `findFile` (§6.10).
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say

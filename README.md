@@ -15,7 +15,15 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** notifications: an app can ask the user's leave, show a
+**Status:** media players: an app can play songs and videos from its
+bundle, its files, a picked document or the network, follow where
+playback is, and show a video with `VideoPlayer`, through Media3's
+`ExoPlayer`. AppRuntime's `ExampleMedia`, a small music player, runs on
+the emulator.
+
+![ExampleMedia in the emulator](Documentation/ExampleMedia-android.png)
+
+Before that, notifications: an app can ask the user's leave, show a
 notification now or schedule one, give it buttons, and hear what the user
 did, with the app open or closed. AppRuntime's `ExampleNotifications`,
 kitchen timers, runs on the emulator.
@@ -132,7 +140,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents and Notifications, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications and MediaPlayer, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -267,6 +275,23 @@ shade, and reads what's posted and the alarms with `adb shell dumpsys`:
 - registering for push is `unsupported`.
 
 It waits for a real alarm, so it takes up to ten minutes.
+
+The media players have their own check, with AppRuntime's `ExampleMedia`
+and a manifest of its own, `Scripts/ExampleMedia/App.swift`. It makes the
+songs, so it needs LAME (`brew install lame`):
+
+```sh
+Scripts/example-media.sh [--engine wasm2c]
+```
+
+`Scripts/example-media-check.py` drives it, and asks Android's audio
+service with `adb shell dumpsys audio`:
+
+- the first song loads from the APK's assets, plays and pauses, and
+  Android hears its player start;
+- Next and Previous change songs, and a song that ends starts the next;
+- leaving the front pauses it, and the app says why;
+- the video player is Media3's `PlayerView`.
 
 ## Packaging
 

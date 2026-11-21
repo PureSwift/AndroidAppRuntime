@@ -6,6 +6,7 @@ import AndroidHostFiles
 import AndroidHostFormatting
 import AndroidHostGraphics
 import AndroidHostLocation
+import AndroidHostMedia
 import AndroidHostMotion
 import AndroidHostNFC
 import AndroidHostNotifications
@@ -78,6 +79,10 @@ public enum AndroidHostApp {
         DocumentsBridge.configure()
         NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
         let host = AppHost(info: info, modules: modules)
+        // Players report times on the guest's clock. Playing on in the
+        // background is NowPlaying's, which isn't here yet.
+        AndroidMedia.configure(AndroidMediaPlatform(system: JavaMediaSystem()), clock: host.native.runtime.clock,
+                               allowsNetwork: info.capabilities.contains(.network), allowsBackground: false)
         do {
             try host.prepare()
         } catch {
@@ -192,6 +197,10 @@ extension NativeHost {
         HostApplication.setState(state)
         // Surfaces draw only while the app is active (§8.2).
         SurfaceHub.shared.setActive(state == .active)
+        if state == .background {
+            // What doesn't play in the background pauses, and says why.
+            AndroidMedia.applicationDidEnterBackground()
+        }
         if state == .active {
             AndroidHostNotifications.center?.didBecomeActive()
             // The user may have changed a permission in Settings.

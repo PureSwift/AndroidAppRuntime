@@ -21,6 +21,7 @@ open class AppRuntimeApplication : Application() {
         LazyGridView.register()
         GraphicsSurface.register()
         WebPageNode.register()
+        VideoPlayerNode.register()
     }
 
     @Deprecated("Called by the system")

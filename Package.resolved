@@ -1,5 +1,5 @@
 {
-  "originHash" : "637d3a86ad7a7c4ee09a425e4db0108729daa74480a282de9b28718ec5099dd9",
+  "originHash" : "13469c67092987cbfe4d7267927be25e068eb4462e1deea9506ef93c2ab6ed44",
   "pins" : [
     {
       "identity" : "appruntime",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/PureSwift/AppRuntime.git",
       "state" : {
         "branch" : "master",
-        "revision" : "a847bf2c51c828ca48597efa074e1a7586f710f8"
+        "revision" : "8b30733888d5f572876aca6875456dfb3dc3ea0b"
       }
     },
     {
