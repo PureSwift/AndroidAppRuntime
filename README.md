@@ -15,7 +15,14 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** media players: an app can play songs and videos from its
+**Status:** the clipboard: an app can copy and paste text, links and
+images from code, and let the user select a text and copy it with the
+platform's menu, through Android's `ClipboardManager`. AppRuntime's
+`ExampleClipboard` runs on the emulator.
+
+![ExampleClipboard in the emulator](Documentation/ExampleClipboard-android.png)
+
+Before that, media players: an app can play songs and videos from its
 bundle, its files, a picked document or the network, follow where
 playback is, and show a video with `VideoPlayer`, through Media3's
 `ExoPlayer`. AppRuntime's `ExampleMedia`, a small music player, runs on
@@ -140,7 +147,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications and MediaPlayer, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer and Clipboard, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -292,6 +299,22 @@ service with `adb shell dumpsys audio`:
 - Next and Previous change songs, and a song that ends starts the next;
 - leaving the front pauses it, and the app says why;
 - the video player is Media3's `PlayerView`.
+
+The clipboard has its own check, with AppRuntime's `ExampleClipboard`:
+
+```sh
+Scripts/example-clipboard.sh [--engine wasm2c]
+```
+
+`Scripts/example-clipboard-check.py` makes its logo and drives it, with the
+emulator in landscape so its row of buttons fits:
+
+- text, a link with its title, and a sensitive code are copied, and
+  pasted back through Android's clipboard;
+- the logo is copied from the APK's assets as an image, and pasted as PNG;
+- what there is to paste is known without reading it, and Clear empties
+  the clipboard;
+- a long press selects the result's text, and the platform copies it.
 
 ## Packaging
 

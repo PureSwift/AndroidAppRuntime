@@ -124,6 +124,23 @@ class IRAdapterTests {
     }
 
     @Test
+    fun putsTextSelectionInTheShellsComposable() {
+        val text = IRNode("Text", 2, mapOf("text" to IRValue.Str("42")), listOf(IRModifier("textSelection", mapOf("enabled" to IRValue.Bool(true)))))
+        val root = show(IRNode("VStack", 1, children = listOf(text)))
+        val wrapper = root.find("2.selection")!!
+        assertEquals("Composable", wrapper.type)
+        assertEquals(IRAdapter.TEXT_SELECTION, (wrapper.props["name"] as JsonPrimitive).content)
+        assertEquals(listOf("2"), wrapper.children.map { it.id })
+        assertEquals("Text", wrapper.children[0].type)
+        val off = IRNode("Text", 3, mapOf("text" to IRValue.Str("no")), listOf(IRModifier("textSelection", mapOf("enabled" to IRValue.Bool(false)))))
+        val disabled = show(IRNode("VStack", 1, children = listOf(off))).find("3.selection")!!
+        assertEquals(IRAdapter.NO_TEXT_SELECTION, (disabled.props["name"] as JsonPrimitive).content)
+        // Without the modifier, nothing around it.
+        val plain = show(IRNode("VStack", 1, children = listOf(IRNode("Text", 4, mapOf("text" to IRValue.Str("x"))))))
+        assertEquals(null, plain.find("4.selection"))
+    }
+
+    @Test
     fun mapsAVideoPlayerToTheShellsView() {
         val player = IRNode("VideoPlayer", 2, mapOf("player" to IRValue.Int(4), "scaling" to IRValue.Str("fill"), "controls" to IRValue.Str("none")))
         val node = show(IRNode("VStack", 1, children = listOf(player))).find("2")!!

@@ -22,6 +22,7 @@ open class AppRuntimeApplication : Application() {
         GraphicsSurface.register()
         WebPageNode.register()
         VideoPlayerNode.register()
+        TextSelectionNode.register()
     }
 
     @Deprecated("Called by the system")

@@ -1,5 +1,6 @@
 @_exported import AndroidHost
 import AndroidHostBluetooth
+import AndroidHostClipboard
 import AndroidHostDefaults
 import AndroidHostDevice
 import AndroidHostDocuments
@@ -37,5 +38,6 @@ public enum AndroidHostModules {
         AndroidHostDocuments.self,
         AndroidHostNotifications.self,
         AndroidMedia.self,
+        AndroidHostClipboard.self,
     ]
 }
