@@ -26,8 +26,8 @@ enum FilesBridge {
     /// as the app runs.
     nonisolated(unsafe) static var assetManager: JavaAssetManager?
 
-    /// Points `AndroidFiles` at the app's directories and its assets, before
-    /// the app starts. If that fails, the app runs without files.
+    /// Points `AndroidFiles` at the app's directories, its assets and the
+    /// documents the user gives, before the app starts. If that fails, the app runs without files.
     static func configure() {
         let system = JavaFileSystem()
         var assets: (any AssetReader)?
@@ -43,7 +43,7 @@ enum FilesBridge {
         #endif
         let directories = AndroidFiles.Configuration.directories(files: system.filesDirectory(), cache: system.cacheDirectory())
         do {
-            try AndroidFiles.configure(AndroidFiles.Configuration(directories: directories, assets: assets))
+            try AndroidFiles.configure(AndroidFiles.Configuration(directories: directories, assets: assets, content: DocumentsBridge.content()))
         } catch {
             HostLog.error("Files: the app's directories can't be made: error \(error.rawValue)")
         }
