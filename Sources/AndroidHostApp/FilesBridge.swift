@@ -1,6 +1,7 @@
 import AndroidHost
 import AndroidHostFiles
 import CAndroidHost
+import RuntimeHost
 import SwiftJava
 
 /// The Kotlin `FileSystem` (`:appruntime-contracts`).
@@ -46,6 +47,9 @@ enum FilesBridge {
         let directories = AndroidFiles.Configuration.directories(files: system.filesDirectory(), cache: system.cacheDirectory())
         do {
             try AndroidFiles.configure(AndroidFiles.Configuration(directories: directories, assets: assets, content: DocumentsBridge.content()))
+            // What reads and writes a whole file for another contract: the
+            // clipboard's images, an editor's text.
+            HostFiles.wholeFiles = AndroidWholeFiles()
         } catch {
             HostLog.error("Files: the app's directories can't be made: error \(error.rawValue)")
         }

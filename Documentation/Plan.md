@@ -3,8 +3,37 @@
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
-notifications (§6.9), media players (§6.10) and secrets and sign-in
-(§6.12) came after them.
+notifications (§6.9), media players (§6.10), the clipboard (§6.11) and
+secrets and sign-in (§6.12) came after them.
+
+**Clipboard:** AppRuntime's Clipboard contract. A guest copies and pastes
+text, links and images from code, knows what there is to paste without
+reading it, and lets the user select a `Text` with `textSelection`.
+
+- **How:** `AndroidHostClipboard` gives AppRuntime's `HostClipboard`
+  Android's `ClipboardManager`. A link is the clip's URI with its text, an
+  image a file the app shares through a `FileProvider`. `textSelection` is
+  Compose's `SelectionContainer` (§6.11).
+- **ExampleClipboard runs:** `Scripts/example-clipboard.sh` makes a logo,
+  packages AppRuntime's `ExampleClipboard`, and drives it on the emulator,
+  in landscape so its row of buttons fits.
+  - Text, a link with its title, and a sensitive code are copied, and
+    pasted back through Android's clipboard.
+  - The logo is copied from the APK's assets as an image, and pasted as
+    PNG.
+  - What there is to paste is known without reading it, and Clear empties
+    the clipboard.
+  - A long press selects the result's text, and the platform copies it.
+
+  All 25 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 4 Swift tests cover text and links, images, a refused
+  read, and image files from the bundle and the app's own directories,
+  against a scripted clipboard. The IR adapter's tests cover
+  `textSelection`.
+- **AppRuntime:** `HostFiles.wholeFiles`, which this host sets so that
+  the clipboard's images and an editor's text reach the bundle and picked
+  documents, came from this work.
 
 **Secrets and sign-in:** AppRuntime's Secrets and WebAuthentication
 contracts. A guest keeps small values, a token or a password, encrypted on
@@ -686,6 +715,7 @@ input.
 | `AndroidHostDefaults` | `Defaults` (§6.6): `HostDefaults` over `AndroidDefaultsStorage`, which keeps values in `SharedPreferences` |
 | `AndroidHostNotifications` | `Notifications` and `PushNotifications` (§6.9): AppRuntime's `HostNotifications` over `AndroidNotificationCenter`, which keeps scheduled requests and posts them through `NotificationPlatform` |
 | `AndroidHostModelStore` | `ModelStore` (§6.7): `HostModelStore` over `SQLiteModelStorageProvider`, a CoreModel-SQLite database per store, with `Pushdown` deciding what SQLite answers |
+| `AndroidHostClipboard` | `Clipboard` (§6.11): AppRuntime's `HostClipboard` over `AndroidClipboardPlatform`, which asks `ClipboardSystem` |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
 | `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem` |
@@ -698,9 +728,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1235,6 +1265,42 @@ which prompts for nothing, and a URL needs `network`.
   video's picture was shown with no source loaded; a real video wasn't
   played on the emulator.
 
+### 6.11 Clipboard
+
+AppRuntime's `Clipboard` contract (Contracts/Clipboard.md): copying and
+pasting from code, and `textSelection`. No capability: Android guards a
+read when it happens.
+
+- **`HostClipboard` over `ClipboardManager`.** AppRuntime's
+  `HostClipboard` checks images, sizes and files, and answers once.
+  `AndroidHostClipboard` gives it `AndroidClipboardPlatform`, over the
+  Kotlin `ClipboardSystem`.
+- **What's copied.**
+  - Text is a plain-text clip.
+  - A link is one item with the text and the URI, described as both
+    `text/plain` and `text/uri-list`.
+  - An image is a file in `cacheDir/appruntime-clipboard`, the only one
+    kept there, shared as a content URI through `ClipboardFileProvider`,
+    a provider of the contracts module's own, so it can't clash with the
+    app's.
+  - `sensitive` sets `ClipDescription.EXTRA_IS_SENSITIVE`, which Android
+    13 reads to keep the clip out of previews.
+- **What's pasted.** A read gives the first item's text, or its URI's
+  where it has no text; a URL only from a URI, never parsed from text; an
+  image read through the `ContentResolver`, PNG or JPEG as it is and
+  anything else Android decodes as PNG.
+- **What there is,** for `available`, comes from the clip's description,
+  which shows the user nothing. A read shows the system's note from
+  Android 12, and works only while the app has focus: without it Android
+  gives no clip, which is nothing to paste.
+- **Files** for an image, to copy or to paste into, are found through
+  `HostFiles.snapshot()`, which this host gives `AndroidWholeFiles`: the
+  bundle is the APK's assets, and a picked document its content URI.
+- **`textSelection`.** The IR adapter puts a node with the modifier in the
+  shell's `TextSelectionNode`: Compose's `SelectionContainer`, so its text
+  can be selected and copied with the platform's menu, or
+  `DisableSelection` when it's turned off inside one.
+
 ### 6.12 Secrets and sign-in
 
 AppRuntime's `Secrets` and `WebAuthentication` contracts
@@ -1469,7 +1535,9 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
 14. **The media docs.** `Contracts/MediaPlayer.md` says Android implements
    the contract itself, not being written in Swift; this host is, and
    uses `HostMediaPlayback` with `findFile` (§6.10).
-15. **The secrets docs.** `Contracts/Secrets.md` says no host has a
+15. **The clipboard docs.** `Contracts/Clipboard.md` says Android needs
+   its own platform; this host has it, over `HostClipboard` (§6.11).
+16. **The secrets docs.** `Contracts/Secrets.md` says no host has a
    keychain or a browser behind it yet; this one has both (§6.12). Its
    Android row could add that the app needs a `queries` entry to see the
    Custom Tabs service.

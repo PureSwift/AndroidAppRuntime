@@ -1,6 +1,7 @@
 import AndroidHost
 import AndroidHostAuthentication
 import AndroidHostBluetooth
+import AndroidHostClipboard
 import AndroidHostDefaults
 import AndroidHostDevice
 import AndroidHostFiles
@@ -79,6 +80,7 @@ public enum AndroidHostApp {
         FilesBridge.configure()
         ModelStoreBridge.configure()
         DocumentsBridge.configure()
+        AndroidHostClipboard.configure(AndroidClipboardPlatform(system: JavaClipboardSystem()))
         AndroidHostSecrets.configure(KeystoreSecretStore(system: JavaSecretSystem()))
         AndroidHostAuthentication.configure(AndroidWebAuthenticationPresenter(system: JavaAuthenticationSystem()),
                                             schemes: CapabilityOptions.authenticationSchemes(Data(data)))

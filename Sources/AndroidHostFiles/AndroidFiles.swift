@@ -215,6 +215,54 @@ public final class AndroidFiles: Files {
     }
 }
 
+/// Whole files as `Files` names them, through the engine, for
+/// `HostFiles.snapshot()`: what the clipboard's images and an editor's text
+/// read and write, off the main thread. The bundle is the APK's assets and
+/// a picked document a content URI, which `HostFiles` alone can't reach.
+public struct AndroidWholeFiles: WholeFileAccess, @unchecked Sendable {
+
+    let engine: FileEngine
+
+    /// Over the configured files.
+    public init() {
+        engine = AndroidFiles.shared().engine
+    }
+
+    public func size(_ directory: Int32, path: String) throws(FileError) -> Int64 {
+        switch engine.attributes(directory, path) {
+        case .attributes(let attributes):
+            guard attributes.kind == .file else { throw .isDirectory }
+            return attributes.size
+        case .failure(let error):
+            throw error
+        default:
+            throw .unknown
+        }
+    }
+
+    public func contents(_ directory: Int32, path: String) throws(FileError) -> [UInt8] {
+        switch engine.read(directory, path, offset: 0, length: -1) {
+        case .data(let data):
+            return data
+        case .failure(let error):
+            throw error
+        default:
+            throw .unknown
+        }
+    }
+
+    public func write(_ data: [UInt8], to directory: Int32, path: String) throws(FileError) {
+        switch engine.write(directory, path, data: data, mode: FileWriteMode.replace.rawValue) {
+        case .complete:
+            return
+        case .failure(let error):
+            throw error
+        default:
+            throw .unknown
+        }
+    }
+}
+
 /// The files module: `Files` and its callback.
 public enum AndroidHostFiles: HostModule {
 
