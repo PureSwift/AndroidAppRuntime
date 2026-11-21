@@ -1,4 +1,5 @@
 import AndroidHost
+import AndroidHostAuthentication
 import AndroidHostBluetooth
 import AndroidHostDefaults
 import AndroidHostDevice
@@ -11,6 +12,7 @@ import AndroidHostMotion
 import AndroidHostNFC
 import AndroidHostNotifications
 import AndroidHostNetworking
+import AndroidHostSecrets
 import AndroidHostModules
 import AndroidHostUI
 import AndroidHostWebKit
@@ -77,6 +79,9 @@ public enum AndroidHostApp {
         FilesBridge.configure()
         ModelStoreBridge.configure()
         DocumentsBridge.configure()
+        AndroidHostSecrets.configure(KeystoreSecretStore(system: JavaSecretSystem()))
+        AndroidHostAuthentication.configure(AndroidWebAuthenticationPresenter(system: JavaAuthenticationSystem()),
+                                            schemes: CapabilityOptions.authenticationSchemes(Data(data)))
         NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
         let host = AppHost(info: info, modules: modules)
         // Players report times on the guest's clock. Playing on in the
@@ -124,6 +129,14 @@ struct CapabilityOptions: Decodable {
 
     func value(_ capability: String, _ option: String) -> String? {
         options[capability]?[option]
+    }
+
+    /// `RTAuthenticationSchemes`: the schemes a sign-in may redirect to.
+    static func authenticationSchemes(_ data: Data) -> [String] {
+        struct Schemes: Decodable {
+            var RTAuthenticationSchemes: [String]?
+        }
+        return (try? PropertyListDecoder().decode(Schemes.self, from: data))?.RTAuthenticationSchemes ?? []
     }
 }
 
@@ -203,11 +216,14 @@ extension NativeHost {
         }
         if state == .active {
             AndroidHostNotifications.center?.didBecomeActive()
+            // Back from a sign-in page, with or without its redirect.
+            AndroidHostAuthentication.presenter?.didBecomeActive()
             // The user may have changed a permission in Settings.
             LocationHub.shared.authorizationMayHaveChanged()
             BluetoothHub.shared.updateAll()
         } else {
             AndroidHostNotifications.center?.didResignActive()
+            AndroidHostAuthentication.presenter?.didResignActive()
             // Reader mode needs the resumed Activity.
             NFCHub.shared.appWentInactive()
         }

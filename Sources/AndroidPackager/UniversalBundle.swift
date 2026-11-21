@@ -42,6 +42,9 @@ public struct UniversalBundle {
     /// `RTCapabilityOptions`: `required`, location's `access`, ….
     public let capabilityOptions: [String: [String: String]]
 
+    /// `RTAuthenticationSchemes`: the schemes a sign-in may redirect to.
+    public let authenticationSchemes: [String]
+
     /// `RTDocumentTypes`: the files the app opens.
     public let documentTypes: [DocumentType]
 
@@ -95,6 +98,7 @@ public struct UniversalBundle {
         let extras = dictionary["RTPlatformExtras"] as? [String: [String: Any]]
         extraManifest = extras?["android"]?["extraManifest"] as? String
         capabilityOptions = dictionary["RTCapabilityOptions"] as? [String: [String: String]] ?? [:]
+        authenticationSchemes = dictionary["RTAuthenticationSchemes"] as? [String] ?? []
         documentTypes = (dictionary["RTDocumentTypes"] as? [[String: Any]] ?? []).map {
             DocumentType(types: $0["Types"] as? [String] ?? [], isEditor: $0["Role"] as? String == "editor")
         }
