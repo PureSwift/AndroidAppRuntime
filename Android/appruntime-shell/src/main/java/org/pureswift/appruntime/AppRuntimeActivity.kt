@@ -29,13 +29,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.pureswift.swiftui.Render
+import org.pureswift.appruntime.contracts.DocumentSystem
 import org.pureswift.appruntime.contracts.HostContext
 import org.pureswift.appruntime.contracts.PermissionSystem
 
 /**
  * The app's one Activity (Documentation/Plan.md §5): starts the guest with
  * the app's keys from `assets/rt/Info.plist`, shows the renderer's surface,
- * and reports the lifecycle, URLs and the back gesture.
+ * and reports the lifecycle, URLs, files it's opened with, pickers' results
+ * and the back gesture.
  *
  * It declares `configChanges` for rotation, dark mode and locale, so those
  * don't restart it; if the system recreates it anyway, the guest keeps
@@ -142,6 +144,13 @@ open class AppRuntimeActivity : ComponentActivity() {
         if (AppRuntime.started) PermissionSystem.deliver(requestCode, permissions, grantResults)
     }
 
+    @Deprecated("The document pickers use startActivityForResult")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (AppRuntime.started) DocumentSystem.deliver(requestCode, resultCode, data)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         openURL(intent)
@@ -153,7 +162,9 @@ open class AppRuntimeActivity : ComponentActivity() {
         if (AppRuntime.started) NativeHost.setLanguages(languages())
     }
 
+    /** A file goes to the guest's documents; any other URL to the app. */
     private fun openURL(intent: Intent?) {
+        if (intent != null && AppRuntime.started && DocumentSystem.open(intent)) return
         val url = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return
         if (AppRuntime.started && !NativeHost.open(url)) {
             Log.i(AppRuntime.TAG, "the app didn't open $url")
