@@ -8,6 +8,7 @@ import AndroidHostGraphics
 import AndroidHostLocation
 import AndroidHostMotion
 import AndroidHostNFC
+import AndroidHostNotifications
 import AndroidHostNetworking
 import AndroidHostModules
 import AndroidHostUI
@@ -75,6 +76,7 @@ public enum AndroidHostApp {
         FilesBridge.configure()
         ModelStoreBridge.configure()
         DocumentsBridge.configure()
+        NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
         let host = AppHost(info: info, modules: modules)
         do {
             try host.prepare()
@@ -88,6 +90,35 @@ public enum AndroidHostApp {
         }
         HostLog.info("\(info.identifier) \(info.version) (\(info.build)) started")
         return ""
+    }
+}
+
+/// `RTCapabilityOptions` from the bundle's `Info.plist`: options such as
+/// notifications' `remote`, which `AppInfo` doesn't carry.
+struct CapabilityOptions: Decodable {
+
+    var options: [String: [String: String]]
+
+    enum CodingKeys: String, CodingKey {
+        case options = "RTCapabilityOptions"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        options = try container.decodeIfPresent([String: [String: String]].self, forKey: .options) ?? [:]
+    }
+
+    /// None when the property list doesn't read.
+    init(_ data: Data) {
+        self = (try? PropertyListDecoder().decode(CapabilityOptions.self, from: data)) ?? CapabilityOptions(options: [:])
+    }
+
+    init(options: [String: [String: String]]) {
+        self.options = options
+    }
+
+    func value(_ capability: String, _ option: String) -> String? {
+        options[capability]?[option]
     }
 }
 
@@ -162,10 +193,12 @@ extension NativeHost {
         // Surfaces draw only while the app is active (§8.2).
         SurfaceHub.shared.setActive(state == .active)
         if state == .active {
+            AndroidHostNotifications.center?.didBecomeActive()
             // The user may have changed a permission in Settings.
             LocationHub.shared.authorizationMayHaveChanged()
             BluetoothHub.shared.updateAll()
         } else {
+            AndroidHostNotifications.center?.didResignActive()
             // Reader mode needs the resumed Activity.
             NFCHub.shared.appWentInactive()
         }

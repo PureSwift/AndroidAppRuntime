@@ -72,6 +72,7 @@ let package = Package(
         .library(name: "AndroidHostFiles", targets: ["AndroidHostFiles"]),
         .library(name: "AndroidHostDefaults", targets: ["AndroidHostDefaults"]),
         .library(name: "AndroidHostModelStore", targets: ["AndroidHostModelStore"]),
+        .library(name: "AndroidHostNotifications", targets: ["AndroidHostNotifications"]),
         .library(name: "AndroidHostDocuments", targets: ["AndroidHostDocuments"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
@@ -182,6 +183,14 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostNotifications",
+            dependencies: [
+                "AndroidHost", runtime("DynamicNotifications"), runtime("RuntimeNotifications"),
+                runtime("DynamicRuntime"), runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostDocuments",
             dependencies: [
                 "AndroidHost", "AndroidHostFiles", runtime("DynamicDocuments"), runtime("DynamicFiles"),
@@ -195,7 +204,7 @@ let package = Package(
                 "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting", "AndroidHostLocation",
                 "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion", "AndroidHostNFC",
                 "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles",
-                "AndroidHostDefaults", "AndroidHostModelStore", "AndroidHostDocuments",
+                "AndroidHostDefaults", "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications",
             ],
             swiftSettings: host
         ),
@@ -205,7 +214,7 @@ let package = Package(
                 "AndroidHostModules", "AndroidHost", "AndroidHostUI", "AndroidHostDevice", "AndroidHostFormatting",
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
                 "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles", "AndroidHostDefaults",
-                "AndroidHostModelStore", "AndroidHostDocuments", runtime("CRuntime"),
+                "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -279,6 +288,14 @@ let package = Package(
         .testTarget(
             name: "AndroidHostFilesTests",
             dependencies: ["AndroidHostFiles"],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostNotificationsTests",
+            dependencies: [
+                "AndroidHostNotifications", "AndroidHost", runtime("DynamicNotifications"), runtime("RuntimeNotifications"),
+                runtime("RuntimeHost"),
+            ],
             swiftSettings: host
         ),
         .testTarget(
