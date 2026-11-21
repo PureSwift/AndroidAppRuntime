@@ -12,6 +12,8 @@ import RuntimeHost
 /// - `bundle` is the APK's assets under `rt/resources`, read through the
 ///   NDK's `AAssetManager`, and listed from the index the packager writes
 ///   beside them.
+/// - A document the user gave (`DocumentGrants`) is a content URI, read
+///   and written through the Storage Access Framework (§6.8).
 ///
 /// Every operation runs on one serial queue, so operations take effect in
 /// the order they were issued, and answers on the main looper.
@@ -26,6 +28,10 @@ public final class AndroidFiles: Files {
         /// The APK's assets; `nil` for an empty bundle.
         public var assets: (any AssetReader)?
 
+        /// Where the documents the user gives are read and written; `nil`
+        /// for a host with no pickers.
+        public var content: (any ContentStore)?
+
         /// The most bytes one read or write passes. More is `tooLarge`.
         public var maximumTransfer: Int
 
@@ -38,6 +44,7 @@ public final class AndroidFiles: Files {
         public init(
             directories: [FileDirectory: String],
             assets: (any AssetReader)?,
+            content: (any ContentStore)? = nil,
             maximumTransfer: Int = 256 << 20,
             work: (@Sendable (@escaping @Sendable () -> Void) -> Void)? = nil,
             deliver: (@Sendable (@escaping @Sendable () -> Void) -> Void)? = nil
@@ -45,6 +52,7 @@ public final class AndroidFiles: Files {
             let queue = DispatchQueue(label: "org.pureswift.appruntime.files")
             self.directories = directories.filter { $0.key != .bundle }
             self.assets = assets
+            self.content = content
             self.maximumTransfer = maximumTransfer
             self.work = work ?? { queue.async(execute: $0) }
             self.deliver = deliver ?? { job in MainLooper.shared.post(job) }
@@ -79,6 +87,60 @@ public final class AndroidFiles: Files {
     /// index.
     public static func configure(_ configuration: Configuration) throws(FileError) {
         current = AndroidFiles(engine: try FileEngine(configuration), configuration: configuration)
+    }
+
+    /// The URI of `path` in a document the user gave, for another contract
+    /// that's handed a directory and a path. Off the main thread: it may
+    /// ask the provider.
+    public func contentURI(of directory: Int32, path: String) throws(FileError) -> String {
+        try engine.documents.uri(of: directory, path: path)
+    }
+
+    // MARK: For the documents' pickers
+
+    /// Runs `operation` on the files queue, in order with every other file
+    /// operation, and `completion` with its result on the main thread.
+    private func perform<Value>(_ operation: @escaping @Sendable (FileEngine) -> Value, completion: @escaping (Value) -> Void) {
+        let engine = self.engine
+        let deliver = configuration.deliver
+        let held = Held(completion)
+        configuration.work {
+            let value = Unchecked(operation(engine))
+            deliver {
+                held.take()?(value.value)
+            }
+        }
+    }
+
+    /// What the provider says of each URI a picker gave.
+    public func describe(_ uris: [String], completion: @escaping ([Result<ContentInfo, FileError>]) -> Void) {
+        perform({ $0.describe(uris) }, completion: completion)
+    }
+
+    /// Whether `path` in `directory` is a file a save picker can copy:
+    /// `nil` when it is.
+    public func checkExport(_ directory: Int32, path: String, completion: @escaping (FileError?) -> Void) {
+        perform({ engine in
+            do throws(FileError) {
+                try engine.checkExport(directory, path)
+                return nil
+            } catch {
+                return error
+            }
+        }, completion: completion)
+    }
+
+    /// Copies the file at `path` in `directory` into the document at `uri`,
+    /// which a save picker made: `nil` when it's copied.
+    public func export(_ directory: Int32, path: String, to uri: String, completion: @escaping (FileError?) -> Void) {
+        perform({ engine in
+            do throws(FileError) {
+                try engine.export(directory, path, to: uri)
+                return nil
+            } catch {
+                return error
+            }
+        }, completion: completion)
     }
 
     /// The configured files. Before `configure`, every operation fails.
