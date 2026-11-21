@@ -201,12 +201,38 @@ public struct ManifestWriter {
                         <intent-filter>
                             <action android:name="android.intent.action.MAIN" />
                             <category android:name="android.intent.category.LAUNCHER" />
-                        </intent-filter>
+                        </intent-filter>\(documentFilters)
                     </activity>\(service)
                 </application>
             </manifest>
             """)
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    // MARK: Documents
+
+    /// An `ACTION_VIEW` filter for each document type, with `ACTION_EDIT`
+    /// for an editor, by MIME type: Android can't match by extension
+    /// reliably, so a type given only by extensions isn't registered
+    /// (Documents.md, "The manifest").
+    var documentFilters: String {
+        var filters = ""
+        for type in bundle.documentTypes {
+            let mimeTypes = type.types.filter { !$0.hasPrefix(".") && $0.contains("/") }
+            guard !mimeTypes.isEmpty else { continue }
+            var lines = ["", "            <intent-filter>", #"                <action android:name="android.intent.action.VIEW" />"#]
+            if type.isEditor {
+                lines.append(#"                <action android:name="android.intent.action.EDIT" />"#)
+            }
+            lines.append(#"                <category android:name="android.intent.category.DEFAULT" />"#)
+            lines.append(#"                <data android:scheme="content" />"#)
+            for mimeType in mimeTypes {
+                lines.append(#"                <data android:mimeType="\#(Self.escape(mimeType))" />"#)
+            }
+            lines.append("            </intent-filter>")
+            filters += lines.joined(separator: "\n")
+        }
+        return filters
     }
 
     // MARK: Strings
