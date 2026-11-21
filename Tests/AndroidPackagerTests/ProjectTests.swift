@@ -61,6 +61,24 @@ import Testing
         #expect(three.glESVersion == "0x00030000")
     }
 
+    @Test func catchesASignInsRedirectForEachScheme() throws {
+        let plain = ManifestWriter(bundle: try bundle())
+        #expect(!plain.manifest.contains("AuthenticationRedirectActivity"))
+        let writer = ManifestWriter(bundle: try bundle(Fixtures.info([
+            "RTCapabilities": ["secrets"],
+            "RTAuthenticationSchemes": ["com.example.mail", "com.example.calendar"],
+        ])))
+        #expect(writer.bundle.authenticationSchemes == ["com.example.mail", "com.example.calendar"])
+        #expect(writer.permissions.isEmpty)
+        let document = try XMLDocument(xmlString: writer.manifest)
+        let activities = try document.nodes(forXPath: "/manifest/application/activity/@android:name").compactMap(\.stringValue)
+        #expect(activities == ["org.pureswift.appruntime.AppRuntimeActivity", "org.pureswift.appruntime.contracts.AuthenticationRedirectActivity"])
+        let schemes = try document.nodes(forXPath: "//activity[2]/intent-filter/data/@android:scheme").compactMap(\.stringValue)
+        #expect(schemes == ["com.example.mail", "com.example.calendar"])
+        let categories = try document.nodes(forXPath: "//activity[2]/intent-filter[1]/category/@android:name").compactMap(\.stringValue)
+        #expect(categories == ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"])
+    }
+
     @Test func declaresTheNotificationsReceiverAndPermissions() throws {
         let plain = ManifestWriter(bundle: try bundle())
         #expect(!plain.manifest.contains("NotificationReceiver"))

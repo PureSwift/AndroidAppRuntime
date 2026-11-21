@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Sign-in pages in Custom Tabs (Plan.md §6.12): from Android 11 the
+         app sees the browsers that offer them only when it says so. -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
     <application>
         <!-- Shares an image the app copied with the app it's pasted into (Plan.md §6.11). -->
         <provider

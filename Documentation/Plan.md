@@ -3,8 +3,8 @@
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
-notifications (§6.9), media players (§6.10) and the clipboard (§6.11) came
-after them.
+notifications (§6.9), media players (§6.10), the clipboard (§6.11) and
+secrets and sign-in (§6.12) came after them.
 
 **Clipboard:** AppRuntime's Clipboard contract. A guest copies and pastes
 text, links and images from code, knows what there is to paste without
@@ -34,6 +34,39 @@ reading it, and lets the user select a `Text` with `textSelection`.
 - **AppRuntime:** `HostFiles.wholeFiles`, which this host sets so that
   the clipboard's images and an editor's text reach the bundle and picked
   documents, came from this work.
+
+**Secrets and sign-in:** AppRuntime's Secrets and WebAuthentication
+contracts. A guest keeps small values, a token or a password, encrypted on
+the device, and signs in through the provider's page in the system's
+browser.
+
+- **How:** `AndroidHostSecrets` gives AppRuntime's `HostSecrets` an
+  AES-GCM key in the Android Keystore, and each secret encrypted with it in
+  a file of `noBackupFilesDir`. `AndroidHostAuthentication` gives
+  `HostWebAuthentication` a Custom Tab for the page, and an activity the
+  packager declares for each of the app's schemes to catch the redirect
+  (§6.12).
+- **ExampleSignIn runs:** `Scripts/example-signin.sh` packages AppRuntime's
+  `ExampleSignIn`, with a manifest that asks for `secrets` and declares its
+  scheme, and drives it, Chrome's Custom Tab and the provider's redirect on
+  the emulator. Its provider doesn't exist, so the check plays it: it reads
+  the page's `state` from the tab's intent, and sends the redirect as the
+  browser would.
+  - The first read of the Keychain finds no token, without an error.
+  - Sign In shows the page in a Custom Tab, and Back from it cancels the
+    sign-in.
+  - The redirect reaches the app, which keeps its token: one file in
+    `no_backup`, named by a hash, with neither the token nor its key in it.
+  - After a restart the token is there, and Sign Out removes it.
+  - A private sign-in shows its page too.
+
+  All 14 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 6 Swift tests cover keeping, finding, listing and
+  removing secrets, a Keystore that can't be read, and the sign-in's
+  redirect, Back, the guest's cancel and a page that can't be shown,
+  against a scripted Keystore and browser. The packager's tests cover the
+  redirect activity.
 
 **Media players:** AppRuntime's MediaPlayer contract. A guest plays songs
 and videos from its bundle, its files, a picked document or the network,
@@ -683,6 +716,8 @@ input.
 | `AndroidHostNotifications` | `Notifications` and `PushNotifications` (§6.9): AppRuntime's `HostNotifications` over `AndroidNotificationCenter`, which keeps scheduled requests and posts them through `NotificationPlatform` |
 | `AndroidHostModelStore` | `ModelStore` (§6.7): `HostModelStore` over `SQLiteModelStorageProvider`, a CoreModel-SQLite database per store, with `Pushdown` deciding what SQLite answers |
 | `AndroidHostClipboard` | `Clipboard` (§6.11): AppRuntime's `HostClipboard` over `AndroidClipboardPlatform`, which asks `ClipboardSystem` |
+| `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
+| `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
 | `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem` |
 | `AndroidHostDocuments` | `Documents` (§6.8): `AndroidDocuments` and its grants over `DocumentPickerSystem`, the Storage Access Framework's pickers |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
@@ -695,7 +730,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1266,6 +1301,41 @@ read when it happens.
   can be selected and copied with the platform's menu, or
   `DisableSelection` when it's turned off inside one.
 
+### 6.12 Secrets and sign-in
+
+AppRuntime's `Secrets` and `WebAuthentication` contracts
+(Contracts/Secrets.md), in two modules as AppRuntime has them, checked
+together with one example. `Secrets` needs `secrets`, which prompts for
+nothing; a sign-in's redirect needs a scheme the manifest declares.
+
+- **Secrets.** AppRuntime's `HostSecrets` checks keys and sizes and runs
+  the store off the main thread. `KeystoreSecretStore` is the store, over
+  the Kotlin `SecretSystem`:
+  - one AES-256-GCM key, `org.pureswift.appruntime.secrets`, made in the
+    Android Keystore the first time, which never leaves it;
+  - each secret a file in `noBackupFilesDir/appruntime-secrets`, which
+    Android never backs up and removes with the app. Its name is the
+    SHA-256 of the secret's key; inside, after a fresh IV, the key and the
+    value are encrypted together, so neither is readable;
+  - a write goes to a new file renamed over the old one;
+  - a Keystore key works while the device is locked, so both
+    accessibilities read alike. A key the Keystore lost, or a file it
+    can't open, is `unavailable`.
+- **Sign-in.** AppRuntime's `HostWebAuthentication` checks the URL and the
+  redirect and answers once. `AndroidWebAuthenticationPresenter` shows the
+  page through the Kotlin `AuthenticationSystem`:
+  - in a Custom Tab of the browser that offers them, ephemeral where it
+    can be (androidx.browser 1.9); in the browser itself where none does.
+    The contracts module's manifest declares the `queries` Android 11
+    needs for an app to see the Custom Tabs service;
+  - the packager declares `AuthenticationRedirectActivity`, with an
+    intent filter for each of the manifest's `RTAuthenticationSchemes`.
+    It hands the redirect to Swift and brings the app's Activity back
+    over the browser;
+  - the page was closed without a sign-in when the app comes back to the
+    front with no redirect: Back, or the tab's close button. That's
+    `canceledLogin`. The guest's `cancel` brings the app back over it.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1467,6 +1537,10 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    uses `HostMediaPlayback` with `findFile` (§6.10).
 15. **The clipboard docs.** `Contracts/Clipboard.md` says Android needs
    its own platform; this host has it, over `HostClipboard` (§6.11).
+16. **The secrets docs.** `Contracts/Secrets.md` says no host has a
+   keychain or a browser behind it yet; this one has both (§6.12). Its
+   Android row could add that the app needs a `queries` entry to see the
+   Custom Tabs service.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say

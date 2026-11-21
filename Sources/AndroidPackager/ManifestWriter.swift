@@ -208,11 +208,41 @@ public struct ManifestWriter {
                             <action android:name="android.intent.action.MAIN" />
                             <category android:name="android.intent.category.LAUNCHER" />
                         </intent-filter>\(documentFilters)
-                    </activity>\(service)\(notificationReceiver)
+                    </activity>\(service)\(notificationReceiver)\(authenticationRedirect)
                 </application>
             </manifest>
             """)
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    // MARK: Sign-in
+
+    /// The activity a sign-in's redirect opens: one intent filter for each
+    /// of the app's schemes (Plan.md §6.12).
+    var authenticationRedirect: String {
+        guard !bundle.authenticationSchemes.isEmpty else { return "" }
+        var lines = [
+            "",
+            "",
+            "        <!-- Catches a sign-in's redirect, and hands it to the app (Plan.md §6.12). -->",
+            "        <activity",
+            #"            android:name="org.pureswift.appruntime.contracts.AuthenticationRedirectActivity""#,
+            #"            android:exported="true""#,
+            #"            android:excludeFromRecents="true""#,
+            #"            android:theme="@android:style/Theme.Translucent.NoTitleBar">"#,
+        ]
+        for scheme in bundle.authenticationSchemes {
+            lines += [
+                "            <intent-filter>",
+                #"                <action android:name="android.intent.action.VIEW" />"#,
+                #"                <category android:name="android.intent.category.DEFAULT" />"#,
+                #"                <category android:name="android.intent.category.BROWSABLE" />"#,
+                #"                <data android:scheme="\#(Self.escape(scheme))" />"#,
+                "            </intent-filter>",
+            ]
+        }
+        lines.append("        </activity>")
+        return lines.joined(separator: "\n")
     }
 
     // MARK: Notifications

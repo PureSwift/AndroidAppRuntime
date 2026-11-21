@@ -147,7 +147,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer and Clipboard, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer, Clipboard, Secrets and WebAuthentication, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -315,6 +315,24 @@ emulator in landscape so its row of buttons fits:
 - what there is to paste is known without reading it, and Clear empties
   the clipboard;
 - a long press selects the result's text, and the platform copies it.
+
+Secrets and sign-in have their own check, with AppRuntime's `ExampleSignIn`
+and a manifest of its own, `Scripts/ExampleSignIn/App.swift`:
+
+```sh
+Scripts/example-signin.sh [--engine wasm2c]
+```
+
+`Scripts/example-signin-check.py` drives it and Chrome's Custom Tab, and
+plays the provider, which doesn't exist: it reads the page's `state` from
+the tab's intent and sends the redirect to the app's scheme.
+
+- the first read of the Keychain finds no token, without an error;
+- Sign In shows the page in a Custom Tab, and Back from it cancels;
+- the redirect reaches the app, which keeps its token encrypted in
+  `no_backup`;
+- after a restart the token is there, and Sign Out removes it;
+- a private sign-in shows its page too.
 
 ## Packaging
 
