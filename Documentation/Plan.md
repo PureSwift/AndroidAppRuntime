@@ -1230,7 +1230,8 @@ opened with. It needs `userFiles`, which prompts for nothing.
   The Kotlin `DocumentSystem` makes the calls. Swift calls it from the
   files queue: its object is made on the main thread, where its class can
   be found. A `SecurityException` is `notPermitted`, a missing document
-  `notFound`, and an I/O failure `unavailable`.
+  `notFound`, and an I/O failure `unavailable`. It reports `unknown` as
+  -1, since 0 is no error; so does `ClipboardSystem` (§6.11).
 - **Bookmarks** are persisted URI permissions
   (`takePersistableUriPermission`), under a random key kept in
   `shared_prefs/org.pureswift.appruntime.documents.xml`. Android keeps 512

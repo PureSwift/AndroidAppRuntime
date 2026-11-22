@@ -28,7 +28,8 @@ import java.util.UUID
  * The content calls (`info`, `children`, `read`, `write`, `create`,
  * `delete`) block, and run on Swift's files queue. Each returns its value,
  * or an empty one, and leaves a `FileError` raw value for [error] on the
- * same thread: 0 when it succeeded.
+ * same thread: 0 when it succeeded, so `unknown`, whose raw value is 0, is
+ * sent as -1.
  */
 class DocumentSystem {
 
@@ -363,8 +364,8 @@ class DocumentSystem {
         /** `shared_prefs/org.pureswift.appruntime.documents.xml`. */
         const val BOOKMARKS = "org.pureswift.appruntime.documents"
 
-        // FileError raw values.
-        private const val UNKNOWN = 0
+        // FileError raw values; `unknown` as -1, since 0 is no error.
+        private const val UNKNOWN = -1
         private const val NOT_FOUND = 2
         private const val READ_ONLY = 7
         private const val OUT_OF_SPACE = 8

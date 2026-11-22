@@ -74,7 +74,8 @@ final class AndroidContentStore: ContentStore {
         self.java = java
     }
 
-    /// The error the last call on this thread left.
+    /// The error the last call on this thread left: 0 for none, and -1
+    /// for `unknown`, which Swift reads as no `FileError` it knows.
     private func check() throws(FileError) {
         let code = java.error()
         guard code == 0 else {

@@ -178,8 +178,8 @@ class ClipboardSystem {
 
         const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
 
-        // PasteboardError raw values.
-        const val UNKNOWN = 0
+        // PasteboardError raw values; `unknown` as -1, since 0 is no error.
+        const val UNKNOWN = -1
         const val NOT_ALLOWED = 2
         const val INVALID_DATA = 4
     }

@@ -133,6 +133,17 @@ final class Heard: ClipboardCallback {
         #expect(heard.events == ["fail 2"])
     }
 
+    /// The Kotlin side sends `unknown` as -1, since 0 is no error.
+    @Test func anUnknownErrorIsMinusOne() {
+        let heard = Heard()
+        clipboard.writeResult = -1
+        shared.writeImage(Self.png, mimeType: "image/png", options: 0, callback: heard)
+        clipboard.text = "swift.org"
+        clipboard.error = -1
+        shared.readText(heard)
+        #expect(heard.events == ["fail \(PasteboardError.unknown.rawValue)", "fail \(PasteboardError.unknown.rawValue)"])
+    }
+
     @Test func imageFilesAreTheBundlesAndTheAppsOwn() {
         let heard = Heard()
         // The bundle is the APK's assets, which HostFiles alone can't read.
