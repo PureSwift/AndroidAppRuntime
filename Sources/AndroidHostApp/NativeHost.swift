@@ -15,6 +15,7 @@ import AndroidHostNotifications
 import AndroidHostNetworking
 import AndroidHostSecrets
 import AndroidHostContacts
+import AndroidHostCalendars
 import AndroidHostModules
 import AndroidHostUI
 import AndroidHostWebKit
@@ -85,6 +86,9 @@ public enum AndroidHostApp {
         AndroidHostSecrets.configure(KeystoreSecretStore(system: JavaSecretSystem()))
         if info.capabilities.contains(.contacts) {
             ContactsBridge.configure(allowsWriting: CapabilityOptions(Data(data)).value("contacts", "access") != "readOnly")
+        }
+        if info.capabilities.contains(.calendars) {
+            CalendarsBridge.configure(writeOnly: CapabilityOptions(Data(data)).value("calendars", "access") == "writeOnly")
         }
         AndroidHostAuthentication.configure(AndroidWebAuthenticationPresenter(system: JavaAuthenticationSystem()),
                                             schemes: CapabilityOptions.authenticationSchemes(Data(data)))
@@ -223,8 +227,10 @@ extension NativeHost {
         }
         if state == .active {
             AndroidHostNotifications.center?.didBecomeActive()
-            // The user may have changed the contacts permission in Settings.
+            // The user may have changed the contacts and calendar permissions
+            // in Settings.
             AndroidHostContacts.refresh()
+            AndroidHostCalendars.refresh()
             // Back from a sign-in page, with or without its redirect.
             AndroidHostAuthentication.presenter?.didBecomeActive()
             // The user may have changed a permission in Settings.

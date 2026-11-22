@@ -88,6 +88,16 @@ import Testing
         #expect(reads.permissions.map(\.name) == ["android.permission.READ_CONTACTS"])
     }
 
+    /// Both at either level: Android's provider reads nothing without
+    /// READ_CALENDAR, not even where to add an event.
+    @Test func asksForBothCalendarPermissionsAtEitherLevel() throws {
+        for access in ["full", "writeOnly"] {
+            let writer = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["calendars"],
+                                                                          "RTCapabilityOptions": ["calendars": ["access": access]]])))
+            #expect(writer.permissions.map(\.name) == ["android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"])
+        }
+    }
+
     @Test func declaresTheNotificationsReceiverAndPermissions() throws {
         let plain = ManifestWriter(bundle: try bundle())
         #expect(!plain.manifest.contains("NotificationReceiver"))

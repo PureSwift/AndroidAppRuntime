@@ -4,8 +4,44 @@
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
 notifications (§6.9), media players (§6.10), the clipboard (§6.11),
-secrets and sign-in (§6.12), now playing (§6.13) and contacts (§6.14)
-came after them.
+secrets and sign-in (§6.12), now playing (§6.13), contacts (§6.14) and
+calendars (§6.15) came after them.
+
+**Calendars:** AppRuntime's Calendars contract. A guest reads the user's
+calendars, lists what happens in a range as Android expands it, and adds,
+changes and removes events, one occurrence of a series or the rest of it.
+
+- **How:** `AndroidHostCalendars` gives AppRuntime's `HostCalendars` an
+  `AndroidCalendarStore` over `CalendarContract`: a range is `Instances`,
+  one occurrence an exception, and the rest of a series an `UNTIL` and a
+  new event. Access is Android's `READ_CALENDAR` and `WRITE_CALENDAR`,
+  and a `ContentObserver` says when the store changed (§6.15).
+- **ExampleCalendar runs:** `Scripts/example-calendar.sh` packages
+  AppRuntime's `ExampleCalendar` with a manifest of its own, and drives it
+  and Android's permission dialog on the emulator, which is in New York,
+  reading the calendar provider with `adb shell content`.
+  - Allow asks with Android's dialog; a holiday on a read-only calendar
+    the check put there is on its day, all day.
+  - Add Standup saves a weekly series in the default calendar, with its
+    rule, length, place and alarm as Android keeps them, and the
+    provider's expansion gives its four Tuesdays.
+  - Add Day Off saves an all-day event at UTC midnight.
+  - Move Second makes an exception for the second Tuesday, and the
+    series' other occurrences stay. That needed the series to have a
+    sync identifier, which the host gives it on a calendar with no sync
+    adapter.
+  - Cancel From Third ends the series' rule before the third Tuesday.
+  - An event another app adds is listed, as the store says it changed,
+    and December and November again read as they should.
+
+  All 26 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 10 Swift tests cover an event's and a calendar's
+  fields as they cross, the default calendar, a range, adding and
+  changing, one occurrence, this and the ones after, removing, Android's
+  errors, a write-only app through `HostCalendars`, and access from
+  Android's permissions, against a scripted provider. The packager's
+  tests cover the permissions.
 
 **Contacts:** AppRuntime's Contacts contract. A guest reads the user's
 address book, as Android's Contacts app shows it, finds people by name,
@@ -783,6 +819,7 @@ input.
 | `AndroidHostModelStore` | `ModelStore` (§6.7): `HostModelStore` over `SQLiteModelStorageProvider`, a CoreModel-SQLite database per store, with `Pushdown` deciding what SQLite answers |
 | `AndroidHostClipboard` | `Clipboard` (§6.11): AppRuntime's `HostClipboard` over `AndroidClipboardPlatform`, which asks `ClipboardSystem` |
 | `AndroidHostContacts` | `Contacts` (§6.14): AppRuntime's `HostContacts` over `AndroidContactDirectory`, which asks `ContactSystem` |
+| `AndroidHostCalendars` | `Calendars` (§6.15): AppRuntime's `HostCalendars` over `AndroidCalendarStore`, which asks `CalendarSystem` |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
 | `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem`, and what's playing over `NowPlayingSystem` (§6.13) |
@@ -797,7 +834,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1505,6 +1542,75 @@ and write unless the manifest says `.readOnly`.
   `readOnly`. The Kotlin side reports `unknown` as -1, since 0 is no
   error.
 
+### 6.15 Calendars
+
+AppRuntime's `Calendars` contract (Contracts/Calendars.md): the user's
+calendars and the events in them, as the system keeps and syncs them. It
+needs `calendars`, `.full` or `.writeOnly`.
+
+- **`HostCalendars` over `CalendarContract`.** AppRuntime's `HostCalendars`
+  checks access, dates, ranges, spans and calendars, sorts, and runs the
+  store off the main thread. `AndroidCalendarStore` is the store, over the
+  Kotlin `CalendarSystem`, and calendars and events cross between them as
+  strings in a fixed order.
+- **A calendar** is a row of `Calendars`: its display name, its account
+  (none for `ACCOUNT_TYPE_LOCAL`), its colour, and writable from
+  `CAL_ACCESS_CONTRIBUTOR` up. Android has no default calendar, so the
+  default is the first writable one that is its account's own
+  (`IS_PRIMARY`), else the first writable one.
+- **A range** is `Instances`, the provider's own expansion, without
+  cancelled occurrences; the host keeps what overlaps the range, as the
+  provider's takes in what only touches it. An occurrence from an
+  exception crosses with its series' identifier and rule, the occurrence
+  it replaces, and `isDetached`.
+- **An event** is a row of `Events`. A series keeps its `RRULE` as the
+  guest wrote it and its length as a `DURATION`; anything else keeps
+  `DTEND`. An all-day event is stored at UTC midnights, in `UTC`, which is
+  the contract's form already, and reads back with no time zone. A timed
+  one without a zone takes the device's. Alarms are `Reminders` rows,
+  `METHOD_ALERT`, replaced at each save. Availability is Android's busy,
+  free or tentative; `unavailable` is busy.
+- **One occurrence** (`span` 0) is an exception:
+  `Events.CONTENT_EXCEPTION_URI` the first time, the exception's own row
+  after. Removing one is an exception with `STATUS_CANCELED`. **This and
+  the ones after** (`span` 1) is a new event from the occurrence, then an
+  `UNTIL` on the series a second before it, with the exceptions from
+  there deleted; from the first occurrence it's the whole series, without
+  its exceptions.
+- **Android's expansion has three gaps,** found on the emulator. Each
+  save works around them:
+  - A series and its exceptions are expanded together only when the
+    series has a sync identifier. Without one, saving an exception
+    re-expands that row alone and drops the series' other occurrences,
+    a case the provider's source marks as a TODO. A calendar on the
+    device alone (`ACCOUNT_TYPE_LOCAL`) has no sync adapter to give one,
+    so the host acts as its sync adapter and gives the series a
+    `_SYNC_ID` before its first exception. On a synced account, a
+    series not yet uploaded is expanded wrongly until its sync adapter
+    has synced it.
+  - The provider expands again only when it's told the start, so every
+    save writes `DTSTART` and the length with the rest.
+  - An exception's own row is expanded with its series only when the
+    update names the series (`ORIGINAL_ID`, `ORIGINAL_INSTANCE_TIME`).
+  An exception takes its length as a `DURATION`; the provider refuses its
+  `DTEND`.
+- **Not kept:** the URL. Android's events have no column for it that an
+  app can write, short of an extended property, which only a sync adapter
+  can.
+- **Access** is `READ_CALENDAR` and `WRITE_CALENDAR`, for either level:
+  the provider reads nothing without `READ_CALENDAR`, not even the
+  calendars a write-only app would add to. `HostCalendars` keeps a
+  `.writeOnly` app from reading. The packager declares both;
+  `requestAccess` is Android's dialog, which asks for the calendar as one
+  thing. The host reads the permissions again when the app comes back to
+  the front.
+- **Changes.** Once access allows it, a `ContentObserver` on
+  `CalendarContract.CONTENT_URI` calls `HostCalendars.storeChanged`, which
+  joins a burst into one `didChange`.
+- **Errors.** A `SecurityException` is `notAuthorized`, an
+  `IllegalArgumentException` from the provider `unsupportedRecurrence`.
+  The Kotlin side reports `unknown` as -1, since 0 is no error.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1726,6 +1832,15 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    read-only raw contact is one whose account's sync adapter doesn't
    upload, and that an address has one country field, which keeps the
    ISO code where there's no name.
+19. **The calendar docs.** `Contracts/Calendars.md` says no platform host
+   has a calendar store behind it yet; this one has, on Android (§6.15).
+   Its manifest table gives Android's `.writeOnly` as `WRITE_CALENDAR`
+   alone. But the provider reads nothing without `READ_CALENDAR`, not
+   even the calendars to add to, so this host declares both and keeps the
+   app from reading. Its Android row could add three things. A series
+   needs a sync identifier before its exceptions expand with it, which a
+   host gives one on a calendar with no sync adapter. An exception takes
+   its length as a `DURATION`. And Android keeps no URL for an event.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say
