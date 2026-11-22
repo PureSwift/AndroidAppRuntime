@@ -17,10 +17,12 @@ public protocol ClipboardSystem: AnyObject {
     /// Text, with the URL too when `url` isn't empty.
     func writeText(_ text: String, url: String, sensitive: Bool)
 
-    /// An image file, PNG or JPEG: a `PasteboardError`, or 0.
+    /// An image file, PNG or JPEG: a `PasteboardError`, or 0. `unknown`
+    /// comes as -1, since its raw value is 0.
     func writeImage(_ bytes: [UInt8], fileExtension: String, sensitive: Bool) -> Int32
 
-    /// The `PasteboardError` the last read left; 0 for none.
+    /// The `PasteboardError` the last read left; 0 for none, and -1 for
+    /// `unknown`.
     func readError() -> Int32
 
     /// The text, or none.
