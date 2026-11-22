@@ -15,12 +15,18 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** the clipboard: an app can copy and paste text, links and
+**Status:** now playing: an app says what it plays, and Android shows it
+with its buttons in the notification shade, on the lock screen and to
+headphones, through a Media3 `MediaSession`; where its manifest says so,
+it plays on in the background. AppRuntime's `ExampleMedia` plays on on the
+emulator.
+
+![ExampleMedia's song in Android's media controls](Documentation/ExampleNowPlaying-android.png)
+
+Before that, the clipboard: an app can copy and paste text, links and
 images from code, and let the user select a text and copy it with the
 platform's menu, through Android's `ClipboardManager`. AppRuntime's
 `ExampleClipboard` runs on the emulator.
-
-![ExampleClipboard in the emulator](Documentation/ExampleClipboard-android.png)
 
 Before that, media players: an app can play songs and videos from its
 bundle, its files, a picked document or the network, follow where
@@ -147,7 +153,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer, Clipboard, Secrets and WebAuthentication, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets and WebAuthentication, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -336,6 +342,25 @@ the tab's intent and sends the redirect to the app's scheme.
   `no_backup`;
 - after a restart the token is there, and Sign Out removes it;
 - a private sign-in shows its page too.
+
+Now playing has its own check, with AppRuntime's `ExampleMedia` and a
+manifest of its own that plays in the background,
+`Scripts/ExampleNowPlaying/App.swift`:
+
+```sh
+Scripts/example-nowplaying.sh [--engine wasm2c]
+```
+
+`Scripts/example-nowplaying-check.py` drives it with the media keys, and
+reads its session, notification and service with `dumpsys`:
+
+- the session shows the song, its artist and album, and the notification
+  its title, artist and cover;
+- playing puts the service in the foreground, as `mediaPlayback`;
+- the media keys pause, play, change songs and skip back;
+- in the background the song plays on, the keys change songs, and the app
+  plays the next one when a song ends;
+- paused, the service leaves the foreground.
 
 ## Packaging
 

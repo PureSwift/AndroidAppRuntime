@@ -37,4 +37,6 @@ dependencies {
     // The media players (Plan.md §6.10); the shell shows them in PlayerView.
     api("androidx.media3:media3-exoplayer:1.5.1")
     api("androidx.media3:media3-ui:1.5.1")
+    // What's playing, its buttons, and playing in the background (Plan.md §6.13).
+    implementation("androidx.media3:media3-session:1.5.1")
 }

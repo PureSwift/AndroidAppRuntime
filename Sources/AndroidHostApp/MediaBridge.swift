@@ -45,6 +45,48 @@ extension JavaMediaSystem: MediaPlayerSystem {
     }
 }
 
+/// The Kotlin `NowPlayingSystem` (`:appruntime-contracts`).
+@JavaClass("org.pureswift.appruntime.contracts.NowPlayingSystem")
+open class JavaNowPlayingSystem: JavaObject {
+
+    @JavaMethod
+    @_nonoverride public convenience init(environment: JNIEnvironment? = nil)
+
+    @JavaMethod open func show(_ title: String, _ artist: String, _ hasArtist: Bool, _ album: String, _ hasAlbum: Bool,
+                               _ commands: Int32, _ skipBackward: Double, _ skipForward: Double,
+                               _ position: Double, _ duration: Double, _ rate: Float, _ playing: Bool)
+    @JavaMethod open func hide()
+    @JavaMethod open func artwork(_ location: String, _ bytes: [Int8])
+    @JavaMethod open func setBackground(_ enabled: Bool)
+}
+
+extension JavaNowPlayingSystem: NowPlayingSystem {
+
+    public func show(title: String, artist: String?, album: String?, commands: Int32, skipBackward: Double, skipForward: Double,
+                     position: Double, duration: Double?, rate: Float, playing: Bool) {
+        // Natives take no optional strings: each comes with whether it's there.
+        show(title, artist ?? "", artist != nil, album ?? "", album != nil, commands, skipBackward, skipForward,
+             position, duration ?? -1, rate, playing)
+    }
+
+    public func artwork(location: String, bytes: [UInt8]) {
+        artwork(location, bytes.map { Int8(bitPattern: $0) })
+    }
+}
+
+/// The Kotlin `NowPlayingNatives` object: the session's buttons.
+@JavaClass("org.pureswift.appruntime.contracts.NowPlayingNatives")
+open class NowPlayingNatives: JavaObject {}
+
+@JavaImplementation("org.pureswift.appruntime.contracts.NowPlayingNatives")
+extension NowPlayingNatives {
+
+    @JavaMethod
+    public func command(_ command: Int32, _ seconds: Double) {
+        AndroidMedia.command(command, seconds: seconds)
+    }
+}
+
 /// The Kotlin `MediaNatives` object: what the players do.
 @JavaClass("org.pureswift.appruntime.contracts.MediaNatives")
 open class MediaNatives: JavaObject {}
