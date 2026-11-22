@@ -86,10 +86,11 @@ public enum AndroidHostApp {
                                             schemes: CapabilityOptions.authenticationSchemes(Data(data)))
         NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
         let host = AppHost(info: info, modules: modules)
-        // Players report times on the guest's clock. Playing on in the
-        // background is NowPlaying's, which isn't here yet.
-        AndroidMedia.configure(AndroidMediaPlatform(system: JavaMediaSystem()), clock: host.native.runtime.clock,
-                               allowsNetwork: info.capabilities.contains(.network), allowsBackground: false)
+        // Players report times on the guest's clock, and play on in the
+        // background where the manifest says `.audio(background: true)`.
+        AndroidMedia.configure(AndroidMediaPlatform(system: JavaMediaSystem(), nowPlaying: JavaNowPlayingSystem()),
+                               clock: host.native.runtime.clock, allowsNetwork: info.capabilities.contains(.network),
+                               allowsBackground: CapabilityOptions(Data(data)).value("audio", "background") == "true")
         do {
             try host.prepare()
         } catch {
