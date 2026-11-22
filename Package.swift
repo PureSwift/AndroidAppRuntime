@@ -77,6 +77,7 @@ let package = Package(
         .library(name: "AndroidHostMedia", targets: ["AndroidHostMedia"]),
         .library(name: "AndroidHostClipboard", targets: ["AndroidHostClipboard"]),
         .library(name: "AndroidHostSecrets", targets: ["AndroidHostSecrets"]),
+        .library(name: "AndroidHostContacts", targets: ["AndroidHostContacts"]),
         .library(name: "AndroidHostAuthentication", targets: ["AndroidHostAuthentication"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
@@ -227,6 +228,14 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostContacts",
+            dependencies: [
+                "AndroidHost", runtime("DynamicContacts"), runtime("RuntimeContacts"), runtime("DynamicRuntime"),
+                runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostAuthentication",
             dependencies: [
                 "AndroidHost", runtime("DynamicAuthentication"), runtime("RuntimeAuthentication"), runtime("DynamicRuntime"),
@@ -242,6 +251,7 @@ let package = Package(
                 "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles",
                 "AndroidHostDefaults", "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications",
                 "AndroidHostMedia", "AndroidHostClipboard", "AndroidHostSecrets", "AndroidHostAuthentication",
+                "AndroidHostContacts",
             ],
             swiftSettings: host
         ),
@@ -252,7 +262,8 @@ let package = Package(
                 "AndroidHostLocation", "AndroidHostNetworking", "AndroidHostBluetooth", "AndroidHostMotion",
                 "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles", "AndroidHostDefaults",
                 "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications", "AndroidHostMedia",
-                "AndroidHostClipboard", "AndroidHostSecrets", "AndroidHostAuthentication", runtime("CRuntime"),
+                "AndroidHostClipboard", "AndroidHostSecrets", "AndroidHostAuthentication", "AndroidHostContacts",
+                runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -362,6 +373,14 @@ let package = Package(
             dependencies: [
                 "AndroidHostSecrets", "AndroidHostAuthentication", runtime("DynamicSecrets"), runtime("RuntimeSecrets"),
                 runtime("DynamicAuthentication"), runtime("RuntimeAuthentication"), runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostContactsTests",
+            dependencies: [
+                "AndroidHostContacts", "AndroidHost", runtime("DynamicContacts"), runtime("RuntimeContacts"),
+                runtime("DynamicRuntime"), runtime("RuntimeHost"),
             ],
             swiftSettings: host
         ),
