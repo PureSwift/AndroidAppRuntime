@@ -14,6 +14,7 @@ import AndroidHostNFC
 import AndroidHostNotifications
 import AndroidHostNetworking
 import AndroidHostSecrets
+import AndroidHostContacts
 import AndroidHostModules
 import AndroidHostUI
 import AndroidHostWebKit
@@ -82,6 +83,9 @@ public enum AndroidHostApp {
         DocumentsBridge.configure()
         AndroidHostClipboard.configure(AndroidClipboardPlatform(system: JavaClipboardSystem()))
         AndroidHostSecrets.configure(KeystoreSecretStore(system: JavaSecretSystem()))
+        if info.capabilities.contains(.contacts) {
+            ContactsBridge.configure(allowsWriting: CapabilityOptions(Data(data)).value("contacts", "access") != "readOnly")
+        }
         AndroidHostAuthentication.configure(AndroidWebAuthenticationPresenter(system: JavaAuthenticationSystem()),
                                             schemes: CapabilityOptions.authenticationSchemes(Data(data)))
         NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
@@ -218,6 +222,8 @@ extension NativeHost {
         }
         if state == .active {
             AndroidHostNotifications.center?.didBecomeActive()
+            // The user may have changed the contacts permission in Settings.
+            AndroidHostContacts.refresh()
             // Back from a sign-in page, with or without its redirect.
             AndroidHostAuthentication.presenter?.didBecomeActive()
             // The user may have changed a permission in Settings.
