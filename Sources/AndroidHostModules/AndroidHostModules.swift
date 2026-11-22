@@ -16,6 +16,7 @@ import AndroidHostNFC
 import AndroidHostNotifications
 import AndroidHostNetworking
 import AndroidHostSecrets
+import AndroidHostContacts
 import AndroidHostUI
 import AndroidHostWebKit
 
@@ -42,6 +43,7 @@ public enum AndroidHostModules {
         AndroidMedia.self,
         AndroidHostClipboard.self,
         AndroidHostSecrets.self,
+        AndroidHostContacts.self,
         AndroidHostAuthentication.self,
     ]
 }
