@@ -3,8 +3,37 @@
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
-notifications (§6.9), media players (§6.10), the clipboard (§6.11) and
-secrets and sign-in (§6.12) came after them.
+notifications (§6.9), media players (§6.10), the clipboard (§6.11),
+secrets and sign-in (§6.12) and contacts (§6.14) came after them.
+
+**Contacts:** AppRuntime's Contacts contract. A guest reads the user's
+address book, as Android's Contacts app shows it, finds people by name,
+and adds, changes and removes them.
+
+- **How:** `AndroidHostContacts` gives AppRuntime's `HostContacts` an
+  `AndroidContactDirectory` over `ContactsContract`: a person is the
+  unified contact, with the data rows of each raw contact. Access is
+  Android's `READ_CONTACTS` and `WRITE_CONTACTS`, and a `ContentObserver`
+  says when the store changed (§6.14).
+- **ExampleContacts runs:** `Scripts/example-contacts.sh` packages
+  AppRuntime's `ExampleContacts`, with a manifest that reads and writes
+  contacts, and drives it and Android's permission dialog on the
+  emulator, reading the contacts provider with `adb shell content`.
+  - Allow asks with Android's dialog; the app lists a person the check put
+    there, with their phone's label.
+  - Add Ada saves a mobile phone, a work email, a home address with its
+    country's code, and a birthday, each as Android keeps it.
+  - Promote Ada adds a job and a second email, keeping the rows she had.
+  - A search is Android's own, by the start of a name.
+  - A person another app adds is listed, as the store says it changed.
+  - Remove Ada removes her from the device.
+
+  All 22 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 5 Swift tests cover a person's fields as they cross,
+  saving, finding and removing, Android's errors, access from Android's
+  permissions, and an app that only reads, against a scripted provider.
+  The packager's tests cover the permissions.
 
 **Clipboard:** AppRuntime's Clipboard contract. A guest copies and pastes
 text, links and images from code, knows what there is to paste without
@@ -716,6 +745,7 @@ input.
 | `AndroidHostNotifications` | `Notifications` and `PushNotifications` (§6.9): AppRuntime's `HostNotifications` over `AndroidNotificationCenter`, which keeps scheduled requests and posts them through `NotificationPlatform` |
 | `AndroidHostModelStore` | `ModelStore` (§6.7): `HostModelStore` over `SQLiteModelStorageProvider`, a CoreModel-SQLite database per store, with `Pushdown` deciding what SQLite answers |
 | `AndroidHostClipboard` | `Clipboard` (§6.11): AppRuntime's `HostClipboard` over `AndroidClipboardPlatform`, which asks `ClipboardSystem` |
+| `AndroidHostContacts` | `Contacts` (§6.14): AppRuntime's `HostContacts` over `AndroidContactDirectory`, which asks `ContactSystem` |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
 | `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem` |
@@ -730,7 +760,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1336,6 +1366,51 @@ nothing; a sign-in's redirect needs a scheme the manifest declares.
     front with no redirect: Back, or the tab's close button. That's
     `canceledLogin`. The guest's `cancel` brings the app back over it.
 
+### 6.14 Contacts
+
+AppRuntime's `Contacts` contract (Contracts/Contacts.md): the user's
+address book, as the system keeps and syncs it. It needs `contacts`, read
+and write unless the manifest says `.readOnly`.
+
+- **`HostContacts` over `ContactsContract`.** AppRuntime's `HostContacts`
+  checks access, refuses a write by an app that only reads and a contact
+  with nothing in it, and runs the store off the main thread.
+  `AndroidContactDirectory` is the store, over the Kotlin `ContactSystem`,
+  and a person crosses between them as strings in a fixed order.
+- **A person** is a row of `Contacts`, the unified contact, with
+  `DISPLAY_NAME_PRIMARY` as the name Android made, and the `Data` rows of
+  its raw contacts: the name (from the raw contact Android names them
+  by), nickname, organization, birthday event, phones, emails, websites
+  and postal addresses. Everyone is in `SORT_KEY_PRIMARY` order.
+- **A search** is `Contacts.CONTENT_FILTER_URI`, Android's own, with its
+  `limit`.
+- **Labels** are Android's types where it has one for the contract's word
+  (`TYPE_MOBILE` for `mobile`), in both directions, and `TYPE_CUSTOM` with
+  the text for any other. A type the contract has no word for reads as
+  Android's own label for it.
+- **A postal address** has one country field on Android. A country's
+  name is kept there; without one, its ISO code. Reading, two capital
+  letters are the code, and a name gives its code in the user's language.
+- **Saving a new person** is a raw contact on the device's own account,
+  with its data rows, in one batch. **Saving a person there is** a batch
+  on their writable raw contacts: one-of-a-kind rows (name, nickname,
+  organization, birthday) are changed where they are, a list's value
+  already there with its label stays, a new one goes to the first
+  writable raw contact, and what the guest dropped is deleted wherever it
+  is. A person whose raw contacts are all from an account whose sync
+  adapter doesn't upload is `readOnly`. Rows the contract doesn't carry,
+  as a photo or a note, aren't touched.
+- **Access** is `READ_CONTACTS`, with `WRITE_CONTACTS` for an app that
+  writes; the packager declares them. `requestAccess` is Android's
+  dialog. The host reads the permissions again when the app comes back to
+  the front, since the user may have changed them in Settings.
+- **Changes.** Once access allows it, a `ContentObserver` on `Contacts`
+  calls `HostContacts.storeChanged`, which joins a burst into one
+  `didChange`.
+- **Errors.** A `SecurityException` is `notAuthorized`, a failed batch
+  `readOnly`. The Kotlin side reports `unknown` as -1, since 0 is no
+  error.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1541,6 +1616,13 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    keychain or a browser behind it yet; this one has both (§6.12). Its
    Android row could add that the app needs a `queries` entry to see the
    Custom Tabs service.
+17. **The contacts docs.** `Contracts/Contacts.md` says no platform host
+   has an address book behind it and none of its per-host notes has been
+   tried; this one has, on Android (§6.14). Its Android row could add that
+   `RAW_CONTACT_IS_READ_ONLY` isn't a column of `RawContacts`, so a
+   read-only raw contact is one whose account's sync adapter doesn't
+   upload, and that an address has one country field, which keeps the
+   ISO code where there's no name.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say
