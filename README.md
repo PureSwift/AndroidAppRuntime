@@ -258,6 +258,9 @@ reads the user's files in `Documents/ExampleDocuments` with `adb shell`:
 - Save a Copy saves where the save picker says, and later saves go to the
   copy;
 - a picked folder is listed, and a file in it is read;
+- Attach Photo shows Android's photo picker, with no media permission; the
+  photo it picks is read, and Back picks nothing. The app's buttons don't
+  all fit a phone held upright, so this part runs in landscape;
 - a cancelled picker changes nothing;
 - `ACTION_EDIT` from another app opens a file while the app runs, and
   `ACTION_VIEW` opens one read-only as it starts.

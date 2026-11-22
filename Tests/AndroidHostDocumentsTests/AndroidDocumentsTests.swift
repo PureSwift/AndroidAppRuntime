@@ -27,6 +27,12 @@ final class ScriptedPickers: DocumentPickerSystem {
         return canShow
     }
 
+    func pickPhotos(id: Int32, kinds: Int32, multiple: Bool) -> Bool {
+        lastID = id
+        calls.append("pickPhotos kinds:\(kinds) multiple:\(multiple)")
+        return canShow
+    }
+
     func pickFolder(id: Int32, write: Bool) -> Bool {
         lastID = id
         calls.append("pickFolder write:\(write)")
@@ -262,6 +268,56 @@ final class Listener: DocumentsDelegate {
         AndroidDocuments.didPick(id: pickers.lastID, uris: ["content://memory/none"])
         run()
         #expect(answer.value == .failed(.notFound))
+    }
+
+    @Test func photosAreReadOnlyAndArentBookmarked() {
+        let photo = content.add("IMG_0001.jpg", "jpeg")
+        let video = content.add("VID_0002.mp4", "mp4")
+        let answer = Answer()
+        documents.pickPhotos(1, multiple: true, callback: answer)
+        #expect(pickers.calls == ["pickPhotos kinds:1 multiple:true"])
+        AndroidDocuments.didPick(id: pickers.lastID, uris: [photo, video])
+        run()
+        #expect(answer.value == .picked(2))
+        #expect(answer.grants.map { $0.name() } == ["IMG_0001.jpg", "VID_0002.mp4"])
+        // The provider writes, but a photo is read-only.
+        #expect(answer.grants.allSatisfy { !$0.isWritable() })
+        let directory = answer.grants[0].directory()
+        #expect(text(directory) == "jpeg")
+        #expect(files.engine.write(directory, "", data: [], mode: 0) == .failure(.readOnly))
+        let bookmark = Answer()
+        answer.grants[0].bookmark(bookmark)
+        run()
+        #expect(bookmark.value == .failed(.unsupported))
+        #expect(pickers.calls.count == 1)
+    }
+
+    @Test func thePhotoPickerForOneGivesOneOrNone() {
+        let photo = content.add("IMG_0001.jpg", "jpeg")
+        let one = Answer()
+        documents.pickPhotos(0, multiple: false, callback: one)
+        #expect(pickers.calls == ["pickPhotos kinds:0 multiple:false"])
+        AndroidDocuments.didPick(id: pickers.lastID, uris: [photo, picked])
+        run()
+        #expect(one.value == .picked(1))
+        let cancelled = Answer()
+        documents.pickPhotos(2, multiple: false, callback: cancelled)
+        AndroidDocuments.didPick(id: pickers.lastID, uris: [])
+        run()
+        #expect(cancelled.value == .picked(0))
+        // Busy and without an Activity, as the other pickers.
+        let first = Answer()
+        let second = Answer()
+        documents.pickPhotos(0, multiple: false, callback: first)
+        documents.pickPhotos(0, multiple: false, callback: second)
+        run()
+        #expect(second.value == .failed(.busy))
+        AndroidDocuments.didPick(id: pickers.lastID, uris: [])
+        pickers.canShow = false
+        let none = Answer()
+        documents.pickPhotos(0, multiple: false, callback: none)
+        run()
+        #expect(none.value == .failed(.notAllowed))
     }
 
     // MARK: Saving

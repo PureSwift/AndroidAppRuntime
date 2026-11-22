@@ -20,6 +20,10 @@ The check puts `notes.txt` and a folder `Notes` (`a.txt`, `b.txt`) in
 - Open Folder shows the folder picker; the folder is listed, and a file in
   it is read by its path under the folder;
 - a cancelled picker changes nothing, and the next one shows;
+- Attach Photo shows Android's own photo picker, with the app holding no
+  media permission; the photo it picks is read, and cancelling it picks
+  nothing. The app's buttons don't all fit a phone held upright, so this
+  part runs in landscape;
 - `ACTION_EDIT` from another app opens a file while the app runs, and
   `ACTION_VIEW` opens one, read-only, as it starts.
 
@@ -27,9 +31,11 @@ Exits non-zero if any check fails.
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import struct
 import time
 import xml.etree.ElementTree as ElementTree
 
@@ -37,6 +43,19 @@ PACKAGE = "org.pureswift.ExampleDocuments"
 ACTIVITY = PACKAGE + "/org.pureswift.appruntime.AppRuntimeActivity"
 SHARED = "/sdcard/Documents/ExampleDocuments"
 FILES = {"notes.txt": "Hello from the user", "Notes/a.txt": "apples", "Notes/b.txt": "bananas"}
+PICTURES = "/sdcard/Pictures/ExampleDocuments"
+
+
+def photo_png():
+    """A 64x48 PNG, for the photo picker."""
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    pixels = b"".join(b"\x00" + bytes(value for x in range(64) for value in (x * 4 % 256, y * 5 % 256, 128))
+                      for y in range(48))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 64, 48, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b""))
 
 
 class Device:
@@ -153,6 +172,69 @@ def prepare(device):
         device.run("shell", f"printf '{text}' > '{SHARED}/{path}'")
     device.run("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
                "-d", f"file://{SHARED}/notes.txt", check=False)
+    # The newest photo, so the photo picker shows it first.
+    local = os.path.join(os.environ.get("TMPDIR", "/tmp"), "example-documents-photo.png")
+    with open(local, "wb") as file:
+        file.write(photo_png())
+    # Through MediaStore, which would list a photo removed with rm.
+    where = f"\"_data LIKE '{PICTURES.replace('/sdcard', '/storage/emulated/0')}/%'\""
+    device.run("shell", "content", "delete", "--uri", "content://media/external/images/media", "--where", where, check=False)
+    device.run("shell", "rm", "-rf", PICTURES)
+    device.run("shell", "mkdir", "-p", PICTURES)
+    device.run("push", local, PICTURES + "/photo.png")
+    os.remove(local)
+    device.run("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+               "-d", f"file://{PICTURES}/photo.png", check=False)
+
+
+def photo_picker(device, timeout=20):
+    """The photo picker's newest photo, once the picker has come up and
+    stopped moving; None if it didn't show."""
+    is_photo = lambda node: node["desc"].startswith("Photo taken on")
+    photo = device.wait(is_photo, timeout)
+    while photo:
+        time.sleep(1)
+        settled = device.wait(is_photo, timeout=5)
+        if settled is None or settled["center"] == photo["center"]:
+            return settled
+        photo = settled
+    return None
+
+
+def attach_photo(device):
+    """Attach Photo, with the phone on its side so the button fits, and the
+    rotation put back after."""
+    rotation = [device.run("shell", "settings", "get", "system", key).strip() for key in ("accelerometer_rotation", "user_rotation")]
+    device.run("shell", "settings", "put", "system", "accelerometer_rotation", "0")
+    device.run("shell", "settings", "put", "system", "user_rotation", "1")
+    try:
+        time.sleep(2)
+        permissions = device.run("shell", "dumpsys", "package", PACKAGE)
+        held = [name for name in ("READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_EXTERNAL_STORAGE") if name in permissions]
+        device.check(not held, f"the app asks for no media permission ({held})")
+        device.check(device.button("Attach Photo"), "Attach Photo")
+        photo = photo_picker(device)
+        device.check(photo is not None, "Android's photo picker shows")
+        # Tapped again where the picker took the first tap as it came up.
+        for _ in range(3):
+            if not photo:
+                break
+            device.tap(photo)
+            time.sleep(3)
+            photo = photo_picker(device, timeout=2)
+        size = len(photo_png())
+        status = device.text("status", lambda text: text.startswith(("Attached", "Couldn't", "No photo")), timeout=20)
+        device.check(re.fullmatch(rf"Attached \d+\.png, {size} bytes", status or "") is not None,
+                     f"the photo is picked, and read ({status!r})")
+        device.check(device.button("Attach Photo"), "Attach Photo again")
+        device.check(photo_picker(device) is not None, "the photo picker shows again")
+        device.run("shell", "input", "keyevent", "KEYCODE_BACK")
+        status = device.text("status", lambda text: text == "No photo picked", timeout=20)
+        device.check(status == "No photo picked", f"Back cancels it ({status!r})")
+    finally:
+        device.run("shell", "settings", "put", "system", "user_rotation", rotation[1] if rotation[1].isdigit() else "0")
+        device.run("shell", "settings", "put", "system", "accelerometer_rotation", rotation[0] if rotation[0].isdigit() else "1")
+        time.sleep(2)
 
 
 def media_id(device, name):
@@ -265,6 +347,9 @@ def main():
     status = device.text("status", lambda text: text.startswith("Read"), timeout=20)
     text = device.text("text", lambda text: text == "bananas", timeout=5)
     device.check((status, text) == ("Read b.txt from Notes", "bananas"), f"is read under the folder ({status!r}, {text!r})")
+
+    # A photo, from Android's own photo picker.
+    attach_photo(device)
 
     # Cancelled, then picked.
     device.check(device.button("Open"), "Open")

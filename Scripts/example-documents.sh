@@ -5,6 +5,7 @@
 # android-app, and runs Scripts/example-documents-check.py, which drives it
 # and Android's own pickers on the emulator: a file is opened, changed and
 # saved back, a copy is saved where the picker says, a folder is listed,
+# a photo is picked with the photo picker,
 # and a file is opened from outside the app.
 #
 #   Scripts/example-documents.sh [--abi arm64-v8a|x86_64] [--engine native|wasm2c] [--skip-bundle]

@@ -13,6 +13,8 @@ open class JavaDocumentSystem: JavaObject {
 
     @JavaMethod open func pick(_ id: Int32, _ types: [String], _ multiple: Bool, _ write: Bool) -> Bool
 
+    @JavaMethod open func pickPhotos(_ id: Int32, _ kinds: Int32, _ multiple: Bool) -> Bool
+
     @JavaMethod open func pickFolder(_ id: Int32, _ write: Bool) -> Bool
 
     @JavaMethod open func export(_ id: Int32, _ name: String) -> Bool
@@ -42,6 +44,10 @@ extension JavaDocumentSystem: DocumentPickerSystem {
 
     public func pick(id: Int32, types: [String], multiple: Bool, write: Bool) -> Bool {
         pick(id, types, multiple, write)
+    }
+
+    public func pickPhotos(id: Int32, kinds: Int32, multiple: Bool) -> Bool {
+        pickPhotos(id, kinds, multiple)
     }
 
     public func pickFolder(id: Int32, write: Bool) -> Bool {
