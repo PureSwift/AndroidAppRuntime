@@ -139,7 +139,9 @@ reaches.
 - **How:** `AndroidHostDocuments` shows the Storage Access Framework's
   pickers from the Activity. What's picked becomes a grant that
   `AndroidHostFiles` reads and writes by content URI, walking a folder's
-  paths by display name. A bookmark is a persisted URI permission (§6.8).
+  paths by display name. A bookmark is a persisted URI permission. A
+  photo comes from Android's own photo picker, read-only and never
+  bookmarked (§6.8).
 - **ExampleDocuments runs:** `Scripts/example-documents.sh` packages
   AppRuntime's `ExampleDocuments`, with a manifest that asks for
   `userFiles` and opens text, and drives it and Android's own pickers on
@@ -148,17 +150,19 @@ reaches.
   - A copy is saved where the save picker says, and later saves go to the
     copy.
   - A folder is picked and listed, and a file in it is read.
+  - A photo is picked with Android's photo picker, with no media
+    permission, and read; Back from the picker picks nothing.
   - A cancelled picker changes nothing.
   - Another app's `ACTION_EDIT` opens a file while the app runs, and
     `ACTION_VIEW` opens one read-only as it starts.
 
-  All 39 checks pass both from the native slice and from `App.wasm`
+  All 46 checks pass both from the native slice and from `App.wasm`
   through wasm2c.
-- **Unit tests:** 26 Swift tests cover a document's paths, reads, writes,
+- **Unit tests:** 28 Swift tests cover a document's paths, reads, writes,
   folders, access, release, sizes, and moves and copies across documents
   and the app's own directories, against a provider in memory; and the
-  pickers, saving, bookmarks and opened files against scripted pickers.
-  The packager's tests cover the intent filters.
+  pickers, the photo picker, saving, bookmarks and opened files against
+  scripted pickers. The packager's tests cover the intent filters.
 
 
 **Model store:** AppRuntime's ModelStore contract. A guest keeps objects
@@ -1130,6 +1134,20 @@ opened with. It needs `userFiles`, which prompts for nothing.
     it takes writes (`FLAG_SUPPORTS_WRITE`, or `FLAG_DIR_SUPPORTS_CREATE`
     for a folder).
   - A folder is the document at the top of the tree that was picked.
+- **The photo picker** (`pickPhotos`, the contract's version 2) is the
+  system's, `MediaStore.ACTION_PICK_IMAGES`, through androidx.activity's
+  `PickVisualMedia`, which falls back to Google Play services' picker
+  before Android 13 and to `ACTION_OPEN_DOCUMENT` for images and videos
+  where there's neither.
+  - It asks for no permission: the app holds no media permission and sees
+    only what's picked.
+  - A photo is read-only and can't be bookmarked (`unsupported`), as on
+    every host. Its URI lasts until the app stops, so the host keeps no
+    copy.
+  - Its name is what the picker gives, the photo's media ID and an
+    extension: Android hides the file's own name.
+  - It answers as the other pickers do: one at a time, nothing when
+    cancelled.
 - **Saving** shows the save picker, which makes an empty document; the
   file is then copied into it on the files queue, and the new document is
   the guest's. The source is checked to be a file before the picker shows.
@@ -1527,6 +1545,8 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    a folder's paths are walked by display name, which two children can
    share, and that `HostFiles.path(of:path:)` has no Android counterpart:
    another contract handed a document asks `AndroidFiles.contentURI(of:path:)`.
+   Its photo picker section could add that Android's picker gives a
+   photo's media ID, not its file's name.
 13. **The notifications docs.** `Contracts/Notifications.md` says Android
    implements the contracts itself, not being written in Swift; this host
    is, and uses `HostNotifications` (§6.9). `RuntimeNotifications` could
