@@ -132,6 +132,26 @@ import Testing
         #expect(try document.nodes(forXPath: "//data/@android:scheme").compactMap(\.stringValue) == ["content", "content"])
     }
 
+    @Test func playsOnInTheBackgroundWhereTheManifestSays() throws {
+        let plain = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["audio"]])))
+        #expect(!plain.playsInBackground)
+        #expect(!plain.manifest.contains("NowPlayingService"))
+        #expect(!plain.permissions.contains { $0.name.hasPrefix("android.permission.FOREGROUND_SERVICE") })
+        let writer = ManifestWriter(bundle: try bundle(Fixtures.info([
+            "RTCapabilities": ["audio"],
+            "RTCapabilityOptions": ["audio": ["background": "true"]],
+        ])))
+        #expect(writer.playsInBackground)
+        #expect(writer.permissions.map(\.name) == [
+            "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        ])
+        let document = try XMLDocument(xmlString: writer.manifest)
+        let types = try document.nodes(forXPath: "/manifest/application/service/@android:foregroundServiceType").compactMap(\.stringValue)
+        #expect(types == ["mediaPlayback"])
+        let names = try document.nodes(forXPath: "/manifest/application/service/@android:name").compactMap(\.stringValue)
+        #expect(names == ["org.pureswift.appruntime.contracts.NowPlayingService"])
+    }
+
     @Test func declaresTheForegroundServiceForBackgroundWork() throws {
         let plain = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["location", "bluetooth"]])))
         #expect(plain.foregroundServiceTypes.isEmpty)
