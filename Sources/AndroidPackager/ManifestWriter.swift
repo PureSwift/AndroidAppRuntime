@@ -95,6 +95,13 @@ public struct ManifestWriter {
         if capabilities.contains("camera") {
             add(Permission("android.permission.CAMERA"))
         }
+        if capabilities.contains("contacts") {
+            add(Permission("android.permission.READ_CONTACTS"))
+            // Writing unless the manifest says `.readOnly` (Plan.md §6.14).
+            if bundle.capabilityOptions["contacts"]?["access"] != "readOnly" {
+                add(Permission("android.permission.WRITE_CONTACTS"))
+            }
+        }
         if capabilities.contains("nfc") {
             add(Permission("android.permission.NFC"))
         }
