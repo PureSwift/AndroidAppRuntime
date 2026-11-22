@@ -15,12 +15,17 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** contacts: an app can read the user's address book, find
+**Status:** calendars: an app can read the user's calendars, list what
+happens in a month as Android expands it, and add, move and cancel events,
+one occurrence or the rest of a series, through `CalendarContract`.
+AppRuntime's `ExampleCalendar` runs on the emulator.
+
+![ExampleCalendar in the emulator](Documentation/ExampleCalendar-android.png)
+
+Before that, contacts: an app can read the user's address book, find
 people by name with Android's own search, and add, change and remove
 them, through `ContactsContract`. AppRuntime's `ExampleContacts` runs on
 the emulator.
-
-![ExampleContacts in the emulator](Documentation/ExampleContacts-android.png)
 
 Before that, now playing: an app says what it plays, and Android shows it
 with its buttons in the notification shade, on the lock screen and to
@@ -160,7 +165,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication and Contacts, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts and Calendars, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -388,6 +393,30 @@ contacts provider with `adb shell content`:
 - Remove Ada removes her from the device.
 
 The check removes the people it added when it's done.
+
+Calendars have their own check, with AppRuntime's `ExampleCalendar` and a
+manifest of its own, `Scripts/ExampleCalendar/App.swift`:
+
+```sh
+Scripts/example-calendar.sh [--engine wasm2c]
+```
+
+`Scripts/example-calendar-check.py` puts two calendars on the device, one
+of them read-only with a holiday in it, drives the app and Android's
+permission dialog, and reads the calendar provider with `adb shell
+content`:
+
+- Allow asks with Android's dialog, and the holiday is on its day, all
+  day, though the device isn't in UTC;
+- Add Standup saves a weekly series with its rule, length, place and
+  alarm, and Android's expansion gives its four Tuesdays;
+- Add Day Off saves an all-day event at UTC midnight;
+- Move Second makes an exception for one Tuesday, and the series' other
+  occurrences stay;
+- Cancel From Third ends the series' rule before the third Tuesday;
+- an event another app adds is listed, as the store says it changed.
+
+The check removes its calendars, and their events, when it's done.
 
 ## Packaging
 
