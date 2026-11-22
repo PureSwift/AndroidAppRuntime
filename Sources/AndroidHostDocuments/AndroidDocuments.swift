@@ -15,6 +15,12 @@ public protocol DocumentPickerSystem: AnyObject {
     /// to show it from.
     func pick(id: Int32, types: [String], multiple: Bool, write: Bool) -> Bool
 
+    /// Shows the system's photo picker, `MediaStore.ACTION_PICK_IMAGES`,
+    /// or the document picker for images and videos where Android has
+    /// none. `kinds`: bits, 1 images, 2 videos; none means both. Its URIs
+    /// come back through `didPick(id:uris:)`, read-only.
+    func pickPhotos(id: Int32, kinds: Int32, multiple: Bool) -> Bool
+
     /// Shows `ACTION_OPEN_DOCUMENT_TREE`. Its folder comes back as the
     /// document at the top of the tree.
     func pickFolder(id: Int32, write: Bool) -> Bool
@@ -37,6 +43,9 @@ public protocol DocumentPickerSystem: AnyObject {
 /// The `Documents` contract on Android (`Plan.md` §6.8): the Storage
 /// Access Framework's pickers, over the app's Activity.
 ///
+/// - The photo picker is Android's own, which asks for no permission. A
+///   photo is read-only and can't be bookmarked, as on every host: its
+///   URI lasts until the app stops.
 /// - What's picked becomes a grant in `DocumentGrants`, which `Files`
 ///   reaches by content URI for as long as the guest holds it.
 /// - One picker at a time; a second is `busy`. With no Activity, a picker
@@ -67,6 +76,7 @@ public final class AndroidDocuments: Documents {
     /// What a picker that's showing was asked for.
     enum Request {
         case pick(multiple: Bool, access: DocumentAccess)
+        case photos(multiple: Bool)
         case folder(access: DocumentAccess)
         case export(directory: Int32, path: String)
     }
@@ -149,6 +159,12 @@ public final class AndroidDocuments: Documents {
         let access = DocumentAccess(rawValue: access) ?? .read
         present(.pick(multiple: multiple, access: access), callback) { system, id in
             system.pick(id: id, types: types, multiple: multiple, write: access == .readWrite)
+        }
+    }
+
+    public func pickPhotos(_ kinds: Int32, multiple: Bool, callback: any DocumentCallback) {
+        present(.photos(multiple: multiple), callback) { system, id in
+            system.pickPhotos(id: id, kinds: kinds, multiple: multiple)
         }
     }
 
@@ -246,6 +262,12 @@ public final class AndroidDocuments: Documents {
                 guard let callback = held.take() else { return }
                 Self.answer(callback, picked, results, access: access)
             }
+        case .photos(let multiple):
+            let picked = multiple ? uris : Array(uris.prefix(1))
+            Self.files().describe(picked) { results in
+                guard let callback = held.take() else { return }
+                Self.answer(callback, picked, results, access: .read, bookmarkable: false)
+            }
         case .folder(let access):
             Self.files().describe([uris[0]]) { results in
                 guard let callback = held.take() else { return }
@@ -269,12 +291,14 @@ public final class AndroidDocuments: Documents {
     }
 
     /// Grants what the provider described, or fails with the first error.
-    private static func answer(_ callback: any DocumentCallback, _ uris: [String], _ results: [Result<ContentInfo, FileError>], access: DocumentAccess) {
+    private static func answer(_ callback: any DocumentCallback, _ uris: [String], _ results: [Result<ContentInfo, FileError>],
+                               access: DocumentAccess, bookmarkable: Bool = true) {
         var grants: [any DocumentGrant] = []
         for (uri, result) in zip(uris, results) {
             switch result {
             case .success(let info):
-                grants.append(AndroidDocumentGrant(uri: uri, info: info, isWritable: access == .readWrite && info.isWritable))
+                grants.append(AndroidDocumentGrant(uri: uri, info: info, isWritable: access == .readWrite && info.isWritable,
+                                                   isBookmarkable: bookmarkable))
             case .failure(let error):
                 callback.didFail(documentError(error).rawValue)
                 return
@@ -326,10 +350,14 @@ final class AndroidDocumentGrant: DocumentGrant {
 
     let granted: FileDirectory
 
-    init(uri: String, info: ContentInfo, isWritable: Bool) {
+    /// False for a photo the photo picker gave.
+    let isBookmarkable: Bool
+
+    init(uri: String, info: ContentInfo, isWritable: Bool, isBookmarkable: Bool = true) {
         self.uri = uri
         self.info = info
         self.writable = isWritable
+        self.isBookmarkable = isBookmarkable
         self.granted = DocumentGrants.grant(ContentGrant(uri: uri, kind: info.kind, isWritable: isWritable))
     }
 
@@ -359,6 +387,10 @@ final class AndroidDocumentGrant: DocumentGrant {
 
     func bookmark(_ callback: any DocumentCallback) {
         guard let system = AndroidDocuments.system else {
+            AndroidDocuments.fail(callback, .unsupported)
+            return
+        }
+        guard isBookmarkable else {
             AndroidDocuments.fail(callback, .unsupported)
             return
         }

@@ -35,6 +35,26 @@ final class ScriptedPlayers: MediaPlayerSystem {
 }
 
 /// What the guest hears.
+/// The Kotlin side's session, scripted: what it was told to show.
+final class ScriptedSession: NowPlayingSystem {
+
+    var calls: [String] = []
+
+    func show(title: String, artist: String?, album: String?, commands: Int32, skipBackward: Double, skipForward: Double,
+              position: Double, duration: Double?, rate: Float, playing: Bool) {
+        calls.append("show \(title), \(artist ?? "-"), \(album ?? "-") commands:\(commands) skip:\(skipBackward)/\(skipForward) "
+                     + "at \(position) of \(duration.map { "\($0)" } ?? "live") rate:\(rate) playing:\(playing)")
+    }
+
+    func hide() { calls.append("hide") }
+
+    func artwork(location: String, bytes: [UInt8]) {
+        calls.append(location.isEmpty && bytes.isEmpty ? "no artwork" : "artwork \(location.isEmpty ? "\(bytes.count) bytes" : location)")
+    }
+
+    func setBackground(_ enabled: Bool) { calls.append("background \(enabled)") }
+}
+
 final class Heard: MediaPlaybackDelegate {
 
     var events: [String] = []
@@ -59,12 +79,16 @@ final class Heard: MediaPlaybackDelegate {
 
     let players = ScriptedPlayers()
 
+    let session = ScriptedSession()
+
     init() throws {
         HostMediaPlayback.reset()
-        AndroidMedia.configure(AndroidMediaPlatform(system: players), clock: nil, allowsNetwork: true, allowsBackground: false)
+        AndroidMedia.configure(AndroidMediaPlatform(system: players, nowPlaying: session), clock: nil,
+                               allowsNetwork: true, allowsBackground: false)
         try AndroidFiles.configure(AndroidFiles.Configuration(
             directories: [:],
-            assets: MemoryAssets(["rt/resources/music/morning.mp3": [1, 2, 3], "rt/resources.index": Array("music/morning.mp3\n".utf8)]),
+            assets: MemoryAssets(["rt/resources/music/morning.mp3": [1, 2, 3], "rt/resources/music/cover.png": [4],
+                                 "rt/resources.index": Array("music/morning.mp3\nmusic/cover.png\n".utf8)]),
             content: OneFolder()
         ))
     }
@@ -181,6 +205,88 @@ final class Heard: MediaPlaybackDelegate {
         // background's.
         AndroidMedia.state(id, 2, reason: 0)
         #expect(heard.events.last == "state 2 3")
+    }
+
+    // MARK: Now playing
+
+    /// A player playing the bundle's song, described.
+    func describedPlayer(_ heard: Heard) -> HostMediaPlayback {
+        let player = HostMediaPlayback.make(heard)
+        player.loadFile(FileDirectory.bundle.rawValue, path: "music/morning.mp3")
+        AndroidMedia.loaded(player.identifier(), duration: 8, width: 0, height: 0, hasAudio: true, hasVideo: false)
+        player.setNowPlaying("Morning", artist: "The Examples", album: nil)
+        return player
+    }
+
+    @Test func whatsPlayingIsTheSessions() {
+        let player = describedPlayer(Heard())
+        let id = player.identifier()
+        #expect(session.calls == [
+            "background false", "no artwork",
+            "show Morning, The Examples, - commands:0 skip:0.0/0.0 at 0.0 of 8.0 rate:0.0 playing:false",
+        ])
+        // The cover, from the APK's assets, is read once.
+        player.setArtworkFile(FileDirectory.bundle.rawValue, path: "music/cover.png")
+        #expect(session.calls.suffix(2).first == "artwork asset:///rt/resources/music/cover.png")
+        player.setRemoteCommands(MediaRemoteCommands([.next, .previous, .skip]).rawValue, skipBackward: 10, skipForward: 30)
+        player.setRate(1)
+        players.positions[id] = 2
+        AndroidMedia.state(id, 3, reason: 0)
+        #expect(session.calls.last == "show Morning, The Examples, - commands:7 skip:10.0/30.0 at 2.0 of 8.0 rate:1.0 playing:true")
+        #expect(session.calls.filter { $0.hasPrefix("artwork") }.count == 1)
+        // Nothing playing, nothing shown; and once more for another song.
+        player.setNowPlaying("", artist: nil, album: nil)
+        #expect(session.calls.last == "hide")
+        player.setNowPlaying("Noon", artist: nil, album: "Examples")
+        #expect(session.calls.suffix(2) == ["no artwork", "show Noon, -, Examples commands:7 skip:10.0/30.0 at 2.0 of 8.0 rate:1.0 playing:true"])
+    }
+
+    @Test func theSessionsButtonsAreTheHostsOrTheGuests() {
+        let heard = Heard()
+        let player = describedPlayer(heard)
+        let id = player.identifier()
+        AndroidMedia.command(0, seconds: 0)
+        #expect(players.calls.last == "play \(id)")
+        AndroidMedia.state(id, 3, reason: 0)
+        AndroidMedia.command(1, seconds: 0)
+        #expect(players.calls.last == "pause \(id)")
+        // The pause was the user's.
+        AndroidMedia.state(id, 2, reason: 0)
+        #expect(heard.events.last == "state 2 1")
+        AndroidMedia.command(6, seconds: 5)
+        #expect(players.calls.last?.hasPrefix("seek \(id) 5.0") == true)
+        // Next, previous and skipping only where the guest offered them.
+        AndroidMedia.command(2, seconds: 0)
+        AndroidMedia.command(4, seconds: 0)
+        #expect(!heard.events.contains("command 1"))
+        player.setRemoteCommands(MediaRemoteCommands([.next, .previous, .skip]).rawValue, skipBackward: 10, skipForward: 30)
+        AndroidMedia.command(2, seconds: 0)
+        AndroidMedia.command(3, seconds: 0)
+        #expect(heard.events.suffix(2) == ["command 1", "command 2"])
+        // By the intervals the guest gave, within the song.
+        players.positions[id] = 6
+        AndroidMedia.command(4, seconds: 0)
+        #expect(players.calls.last?.hasPrefix("seek \(id) 0.0") == true)
+        players.positions[id] = 2
+        AndroidMedia.command(5, seconds: 0)
+        #expect(players.calls.last?.hasPrefix("seek \(id) 8.0") == true)
+        AndroidMedia.command(99, seconds: 0)
+    }
+
+    @Test func withTheManifestsLeaveItPlaysOn() {
+        HostMediaPlayback.reset()
+        AndroidMedia.configure(AndroidMediaPlatform(system: players, nowPlaying: session), clock: nil,
+                               allowsNetwork: false, allowsBackground: true)
+        #expect(session.calls.last == "background true")
+        #expect(HostMediaPlayback.canPlayInBackground())
+        let player = describedPlayer(Heard())
+        let id = player.identifier()
+        player.setPlaysInBackground(true)
+        player.play()
+        AndroidMedia.state(id, 3, reason: 0)
+        AndroidMedia.applicationDidEnterBackground()
+        #expect(players.calls.last == "play \(id)")
+        #expect(HostMediaPlayback.holdsApp)
     }
 }
 

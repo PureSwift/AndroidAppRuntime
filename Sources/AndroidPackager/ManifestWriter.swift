@@ -32,6 +32,13 @@ public struct ManifestWriter {
         return types
     }
 
+    /// Whether the app plays on in the background: `.audio(background:
+    /// true)`. The now-playing service is then in the foreground while it
+    /// plays (Plan.md §6.13).
+    public var playsInBackground: Bool {
+        bundle.info.capabilities.contains { $0.rawValue == "audio" } && bundle.capabilityOptions["audio"]?["background"] == "true"
+    }
+
     // MARK: Permissions
 
     /// A `<uses-permission>`.
@@ -110,7 +117,7 @@ public struct ManifestWriter {
             add(Permission("android.permission.ACCESS_NETWORK_STATE"))
         }
         let services = foregroundServiceTypes
-        if !services.isEmpty {
+        if !services.isEmpty || playsInBackground {
             add(Permission("android.permission.FOREGROUND_SERVICE"))
         }
         if services.contains("location") {
@@ -118,6 +125,9 @@ public struct ManifestWriter {
         }
         if services.contains("connectedDevice") {
             add(Permission("android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"))
+        }
+        if playsInBackground {
+            add(Permission("android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"))
         }
         return permissions
     }
@@ -215,11 +225,27 @@ public struct ManifestWriter {
                             <action android:name="android.intent.action.MAIN" />
                             <category android:name="android.intent.category.LAUNCHER" />
                         </intent-filter>\(documentFilters)
-                    </activity>\(service)\(notificationReceiver)\(authenticationRedirect)
+                    </activity>\(service)\(nowPlayingService)\(notificationReceiver)\(authenticationRedirect)
                 </application>
             </manifest>
             """)
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    // MARK: Now playing
+
+    /// For an app that plays in the background, the contracts module's
+    /// now-playing service, with the type it needs to be in the foreground
+    /// while it plays; the manifest merger adds it to the module's.
+    var nowPlayingService: String {
+        guard playsInBackground else { return "" }
+        return """
+
+                <!-- Plays on in the background (Plan.md §6.13). -->
+                <service
+                    android:name="org.pureswift.appruntime.contracts.NowPlayingService"
+                    android:foregroundServiceType="mediaPlayback" />
+        """
     }
 
     // MARK: Sign-in

@@ -4,7 +4,8 @@
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
 notifications (§6.9), media players (§6.10), the clipboard (§6.11),
-secrets and sign-in (§6.12) and contacts (§6.14) came after them.
+secrets and sign-in (§6.12), now playing (§6.13) and contacts (§6.14)
+came after them.
 
 **Contacts:** AppRuntime's Contacts contract. A guest reads the user's
 address book, as Android's Contacts app shows it, finds people by name,
@@ -34,6 +35,38 @@ and adds, changes and removes them.
   saving, finding and removing, Android's errors, access from Android's
   permissions, and an app that only reads, against a scripted provider.
   The packager's tests cover the permissions.
+
+**Now playing:** AppRuntime's NowPlaying additions to the media player. A
+guest says what it plays, and Android shows it with its buttons in the
+notification shade, on the lock screen and to headphones; with
+`.audio(background: true)` it plays on in the background.
+
+- **How:** `AndroidHostMedia` gives `HostMediaPlayback`'s
+  `showNowPlaying` one Media3 `MediaSession`, over a stand-in player that
+  shows what Swift says and hands its buttons back to
+  `HostMediaPlayback.remote`. The session lives in a `MediaSessionService`,
+  in the foreground while it plays where the manifest allows (§6.13).
+- **ExampleMedia plays on:** `Scripts/example-nowplaying.sh` packages
+  AppRuntime's `ExampleMedia` with a manifest of its own that plays in the
+  background, and drives it, its session and its notification on the
+  emulator with the media keys and `dumpsys`.
+  - The session shows the song, its artist and its album; the
+    notification its title, artist and cover.
+  - Playing puts the service in the foreground, as `mediaPlayback`.
+  - The media keys pause, as the user, play, go to the app's next and
+    previous songs, and skip back.
+  - In the background the song plays on, Next changes songs, and the app
+    plays the next one when a song ends.
+  - Paused, the service leaves the foreground; back in front the app is as
+    the keys left it.
+
+  All 19 checks pass both from the native slice and from `App.wasm`
+  through wasm2c. `Scripts/example-media.sh`, without the background,
+  passes as before: leaving the front pauses.
+- **Unit tests:** 3 Swift tests cover what the session is told, its
+  artwork read once, the buttons the host and the guest answer, and
+  playing on with the manifest's leave, against a scripted session. The
+  packager's tests cover the service's type and permissions.
 
 **Clipboard:** AppRuntime's Clipboard contract. A guest copies and pastes
 text, links and images from code, knows what there is to paste without
@@ -168,7 +201,9 @@ reaches.
 - **How:** `AndroidHostDocuments` shows the Storage Access Framework's
   pickers from the Activity. What's picked becomes a grant that
   `AndroidHostFiles` reads and writes by content URI, walking a folder's
-  paths by display name. A bookmark is a persisted URI permission (§6.8).
+  paths by display name. A bookmark is a persisted URI permission. A
+  photo comes from Android's own photo picker, read-only and never
+  bookmarked (§6.8).
 - **ExampleDocuments runs:** `Scripts/example-documents.sh` packages
   AppRuntime's `ExampleDocuments`, with a manifest that asks for
   `userFiles` and opens text, and drives it and Android's own pickers on
@@ -177,17 +212,19 @@ reaches.
   - A copy is saved where the save picker says, and later saves go to the
     copy.
   - A folder is picked and listed, and a file in it is read.
+  - A photo is picked with Android's photo picker, with no media
+    permission, and read; Back from the picker picks nothing.
   - A cancelled picker changes nothing.
   - Another app's `ACTION_EDIT` opens a file while the app runs, and
     `ACTION_VIEW` opens one read-only as it starts.
 
-  All 39 checks pass both from the native slice and from `App.wasm`
+  All 46 checks pass both from the native slice and from `App.wasm`
   through wasm2c.
-- **Unit tests:** 26 Swift tests cover a document's paths, reads, writes,
+- **Unit tests:** 28 Swift tests cover a document's paths, reads, writes,
   folders, access, release, sizes, and moves and copies across documents
   and the app's own directories, against a provider in memory; and the
-  pickers, saving, bookmarks and opened files against scripted pickers.
-  The packager's tests cover the intent filters.
+  pickers, the photo picker, saving, bookmarks and opened files against
+  scripted pickers. The packager's tests cover the intent filters.
 
 
 **Model store:** AppRuntime's ModelStore contract. A guest keeps objects
@@ -748,7 +785,7 @@ input.
 | `AndroidHostContacts` | `Contacts` (§6.14): AppRuntime's `HostContacts` over `AndroidContactDirectory`, which asks `ContactSystem` |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
-| `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem` |
+| `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem`, and what's playing over `NowPlayingSystem` (§6.13) |
 | `AndroidHostDocuments` | `Documents` (§6.8): `AndroidDocuments` and its grants over `DocumentPickerSystem`, the Storage Access Framework's pickers |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
@@ -760,7 +797,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1160,6 +1197,20 @@ opened with. It needs `userFiles`, which prompts for nothing.
     it takes writes (`FLAG_SUPPORTS_WRITE`, or `FLAG_DIR_SUPPORTS_CREATE`
     for a folder).
   - A folder is the document at the top of the tree that was picked.
+- **The photo picker** (`pickPhotos`, the contract's version 2) is the
+  system's, `MediaStore.ACTION_PICK_IMAGES`, through androidx.activity's
+  `PickVisualMedia`, which falls back to Google Play services' picker
+  before Android 13 and to `ACTION_OPEN_DOCUMENT` for images and videos
+  where there's neither.
+  - It asks for no permission: the app holds no media permission and sees
+    only what's picked.
+  - A photo is read-only and can't be bookmarked (`unsupported`), as on
+    every host. Its URI lasts until the app stops, so the host keeps no
+    copy.
+  - Its name is what the picker gives, the photo's media ID and an
+    extension: Android hides the file's own name.
+  - It answers as the other pickers do: one at a time, nothing when
+    cancelled.
 - **Saving** shows the save picker, which makes an empty document; the
   file is then copied into it on the files queue, and the new document is
   the guest's. The source is checked to be a file before the picker shows.
@@ -1290,10 +1341,10 @@ which prompts for nothing, and a URL needs `network`.
   node names, with Media3's controls unless the node says `none`, fitted
   or zoomed to fill. When the node goes, the view lets the player go, and
   it keeps playing.
-- **Not here:** playing on in the background, and what's playing on the
-  lock screen, which are NowPlaying's: `canPlayInBackground` is false. A
-  video's picture was shown with no source loaded; a real video wasn't
-  played on the emulator.
+- **Playing on in the background,** and what's playing, are NowPlaying's
+  (§6.13).
+- **Not here:** a video's picture was shown with no source loaded; a real
+  video wasn't played on the emulator.
 
 ### 6.11 Clipboard
 
@@ -1365,6 +1416,48 @@ nothing; a sign-in's redirect needs a scheme the manifest declares.
   - the page was closed without a sign-in when the app comes back to the
     front with no redirect: Back, or the tab's close button. That's
     `canceledLogin`. The guest's `cancel` brings the app back over it.
+
+### 6.13 Now playing
+
+AppRuntime's NowPlaying additions to `MediaPlayback`
+(Contracts/NowPlaying.md): what's playing, its buttons, and playing on in
+the background. No contract of its own: `HostMediaPlayback` keeps which
+player is the app's now-playing one and answers the buttons, and hands the
+platform a `HostNowPlaying` at each change.
+
+- **One session.** `AndroidMediaPlatform.showNowPlaying` tells the Kotlin
+  `NowPlayingSystem`, which keeps one Media3 `MediaSession` for the app.
+  Its player, `NowPlayingPlayer`, is a `SimpleBasePlayer` that plays
+  nothing: its state is what Swift said, the title, artist, album, cover,
+  position, duration and rate, and Media3 extrapolates the position while
+  it plays. The `ExoPlayer`s stay the media players' (§6.10).
+- **The buttons go back to Swift,** through `NowPlayingNatives`, as
+  `HostMediaPlayback.remote`: play, pause, seeking and skipping answered on
+  the player, as the user's; next and previous the guest's. Media3 maps
+  the notification's buttons, the lock screen's and the media keys to
+  them. It offers next and previous only where there's an item to go to,
+  so with those buttons the player lists a stand-in on either side of
+  what's playing, and going to one is the button.
+- **The artwork** is read once when it changes: the bundle's from the APK's
+  assets (`findFile`'s `asset:///`), a document's from its content URI, or
+  the bytes.
+- **The service.** The contracts module declares `NowPlayingService`, a
+  `MediaSessionService`, started from the front with the first song. It
+  gives the notification, the shade's and lock screen's controls, and
+  the session to other controllers. A media notification needs no
+  `POST_NOTIFICATIONS`.
+- **Playing on** needs the manifest's `.audio(background: true)`. The
+  packager then adds `foregroundServiceType="mediaPlayback"` to the
+  service, with `FOREGROUND_SERVICE` and
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and `HostMediaPlayback` doesn't
+  pause a player that plays on. The service is in the foreground while
+  it plays. Without the option the service never asks for the
+  foreground, which Android would refuse without the type, and the app's
+  players pause when it leaves the front, as before.
+- **Interruptions** are the players' own audio focus (§6.10): Media3
+  pauses for a call and plays again after it.
+- **Not here:** `HostMediaPlayback.holdsApp`. Android keeps an app with a
+  foreground service running, so nothing here stops an app that plays.
 
 ### 6.14 Contacts
 
@@ -1602,6 +1695,8 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    a folder's paths are walked by display name, which two children can
    share, and that `HostFiles.path(of:path:)` has no Android counterpart:
    another contract handed a document asks `AndroidFiles.contentURI(of:path:)`.
+   Its photo picker section could add that Android's picker gives a
+   photo's media ID, not its file's name.
 13. **The notifications docs.** `Contracts/Notifications.md` says Android
    implements the contracts itself, not being written in Swift; this host
    is, and uses `HostNotifications` (§6.9). `RuntimeNotifications` could
@@ -1616,7 +1711,14 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    keychain or a browser behind it yet; this one has both (§6.12). Its
    Android row could add that the app needs a `queries` entry to see the
    Custom Tabs service.
-17. **The contacts docs.** `Contracts/Contacts.md` says no platform host
+17. **The now-playing docs.** `Contracts/NowPlaying.md` says Android needs
+   its own; this host has it, over `HostMediaPlayback` (§6.13). Its
+   Android row says the `MediaSessionService` holds the `ExoPlayer`; here
+   the session holds a stand-in player, so that the buttons go through
+   `HostMediaPlayback.remote`. Its manifest table could add that the
+   service is declared for every app, and only its type depends on
+   `background`.
+18. **The contacts docs.** `Contracts/Contacts.md` says no platform host
    has an address book behind it and none of its per-host notes has been
    tried; this one has, on Android (§6.14). Its Android row could add that
    `RAW_CONTACT_IS_READ_ONLY` isn't a column of `RawContacts`, so a
