@@ -102,6 +102,13 @@ public struct ManifestWriter {
         if capabilities.contains("camera") {
             add(Permission("android.permission.CAMERA"))
         }
+        if capabilities.contains("calendars") {
+            // Both for either level: Android's provider reads nothing, not
+            // even where to add an event, without READ_CALENDAR. The host
+            // keeps a write-only app from reading (Plan.md §6.15).
+            add(Permission("android.permission.READ_CALENDAR"))
+            add(Permission("android.permission.WRITE_CALENDAR"))
+        }
         if capabilities.contains("contacts") {
             add(Permission("android.permission.READ_CONTACTS"))
             // Writing unless the manifest says `.readOnly` (Plan.md §6.14).
