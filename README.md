@@ -15,7 +15,14 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** now playing: an app says what it plays, and Android shows it
+**Status:** contacts: an app can read the user's address book, find
+people by name with Android's own search, and add, change and remove
+them, through `ContactsContract`. AppRuntime's `ExampleContacts` runs on
+the emulator.
+
+![ExampleContacts in the emulator](Documentation/ExampleContacts-android.png)
+
+Before that, now playing: an app says what it plays, and Android shows it
 with its buttons in the notification shade, on the lock screen and to
 headphones, through a Media3 `MediaSession`; where its manifest says so,
 it plays on in the background. AppRuntime's `ExampleMedia` plays on on the
@@ -153,7 +160,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets and WebAuthentication, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication and Contacts, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -361,6 +368,26 @@ reads its session, notification and service with `dumpsys`:
 - in the background the song plays on, the keys change songs, and the app
   plays the next one when a song ends;
 - paused, the service leaves the foreground.
+
+Contacts have their own check, with AppRuntime's `ExampleContacts` and a
+manifest of its own, `Scripts/ExampleContacts/App.swift`:
+
+```sh
+Scripts/example-contacts.sh [--engine wasm2c]
+```
+
+`Scripts/example-contacts-check.py` puts a person in the device's
+contacts, drives the app and Android's permission dialog, and reads the
+contacts provider with `adb shell content`:
+
+- Allow asks with Android's dialog, and the app lists the person;
+- Add Ada saves her phone, email, address and birthday as Android keeps
+  them, and Promote Ada adds a job and an email, keeping the rest;
+- a search is Android's own, by the start of a name;
+- a person another app adds is listed, as the store says it changed;
+- Remove Ada removes her from the device.
+
+The check removes the people it added when it's done.
 
 ## Packaging
 
