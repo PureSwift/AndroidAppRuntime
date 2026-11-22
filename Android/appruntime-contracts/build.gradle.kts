@@ -30,6 +30,8 @@ kotlin {
 
 dependencies {
     implementation("androidx.core:core:1.15.0")
+    // The system photo picker, and its fallbacks (Plan.md §6.8).
+    implementation("androidx.activity:activity:1.10.1")
     // Sign-in pages in the system's browser (Plan.md §6.12).
     implementation("androidx.browser:browser:1.9.0")
     // The media players (Plan.md §6.10); the shell shows them in PlayerView.
