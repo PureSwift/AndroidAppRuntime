@@ -3,8 +3,40 @@
 **Status:** phases 0 to 4 (§11) are done, but for running the x86_64 and
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
-notifications (§6.9), media players (§6.10), the clipboard (§6.11) and
-secrets and sign-in (§6.12) came after them.
+notifications (§6.9), media players (§6.10), the clipboard (§6.11),
+secrets and sign-in (§6.12) and now playing (§6.13) came after them.
+
+**Now playing:** AppRuntime's NowPlaying additions to the media player. A
+guest says what it plays, and Android shows it with its buttons in the
+notification shade, on the lock screen and to headphones; with
+`.audio(background: true)` it plays on in the background.
+
+- **How:** `AndroidHostMedia` gives `HostMediaPlayback`'s
+  `showNowPlaying` one Media3 `MediaSession`, over a stand-in player that
+  shows what Swift says and hands its buttons back to
+  `HostMediaPlayback.remote`. The session lives in a `MediaSessionService`,
+  in the foreground while it plays where the manifest allows (§6.13).
+- **ExampleMedia plays on:** `Scripts/example-nowplaying.sh` packages
+  AppRuntime's `ExampleMedia` with a manifest of its own that plays in the
+  background, and drives it, its session and its notification on the
+  emulator with the media keys and `dumpsys`.
+  - The session shows the song, its artist and its album; the
+    notification its title, artist and cover.
+  - Playing puts the service in the foreground, as `mediaPlayback`.
+  - The media keys pause, as the user, play, go to the app's next and
+    previous songs, and skip back.
+  - In the background the song plays on, Next changes songs, and the app
+    plays the next one when a song ends.
+  - Paused, the service leaves the foreground; back in front the app is as
+    the keys left it.
+
+  All 19 checks pass both from the native slice and from `App.wasm`
+  through wasm2c. `Scripts/example-media.sh`, without the background,
+  passes as before: leaving the front pauses.
+- **Unit tests:** 3 Swift tests cover what the session is told, its
+  artwork read once, the buttons the host and the guest answer, and
+  playing on with the manifest's leave, against a scripted session. The
+  packager's tests cover the service's type and permissions.
 
 **Clipboard:** AppRuntime's Clipboard contract. A guest copies and pastes
 text, links and images from code, knows what there is to paste without
@@ -718,7 +750,7 @@ input.
 | `AndroidHostClipboard` | `Clipboard` (§6.11): AppRuntime's `HostClipboard` over `AndroidClipboardPlatform`, which asks `ClipboardSystem` |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
-| `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem` |
+| `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem`, and what's playing over `NowPlayingSystem` (§6.13) |
 | `AndroidHostDocuments` | `Documents` (§6.8): `AndroidDocuments` and its grants over `DocumentPickerSystem`, the Storage Access Framework's pickers |
 | `AndroidHostModules` | The list of every module, which `libapp.so` registers and the packager checks apps against |
 | `AndroidHostApp` | `JNI_OnLoad` and the `@JavaImplementation` natives of the Kotlin shell, and each module's swift-java bindings. It links every module, plus `CRuntime` |
@@ -730,7 +762,7 @@ The Gradle side lives in `Android/`:
 |---|---|
 | `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1260,10 +1292,10 @@ which prompts for nothing, and a URL needs `network`.
   node names, with Media3's controls unless the node says `none`, fitted
   or zoomed to fill. When the node goes, the view lets the player go, and
   it keeps playing.
-- **Not here:** playing on in the background, and what's playing on the
-  lock screen, which are NowPlaying's: `canPlayInBackground` is false. A
-  video's picture was shown with no source loaded; a real video wasn't
-  played on the emulator.
+- **Playing on in the background,** and what's playing, are NowPlaying's
+  (§6.13).
+- **Not here:** a video's picture was shown with no source loaded; a real
+  video wasn't played on the emulator.
 
 ### 6.11 Clipboard
 
@@ -1335,6 +1367,48 @@ nothing; a sign-in's redirect needs a scheme the manifest declares.
   - the page was closed without a sign-in when the app comes back to the
     front with no redirect: Back, or the tab's close button. That's
     `canceledLogin`. The guest's `cancel` brings the app back over it.
+
+### 6.13 Now playing
+
+AppRuntime's NowPlaying additions to `MediaPlayback`
+(Contracts/NowPlaying.md): what's playing, its buttons, and playing on in
+the background. No contract of its own: `HostMediaPlayback` keeps which
+player is the app's now-playing one and answers the buttons, and hands the
+platform a `HostNowPlaying` at each change.
+
+- **One session.** `AndroidMediaPlatform.showNowPlaying` tells the Kotlin
+  `NowPlayingSystem`, which keeps one Media3 `MediaSession` for the app.
+  Its player, `NowPlayingPlayer`, is a `SimpleBasePlayer` that plays
+  nothing: its state is what Swift said, the title, artist, album, cover,
+  position, duration and rate, and Media3 extrapolates the position while
+  it plays. The `ExoPlayer`s stay the media players' (§6.10).
+- **The buttons go back to Swift,** through `NowPlayingNatives`, as
+  `HostMediaPlayback.remote`: play, pause, seeking and skipping answered on
+  the player, as the user's; next and previous the guest's. Media3 maps
+  the notification's buttons, the lock screen's and the media keys to
+  them. It offers next and previous only where there's an item to go to,
+  so with those buttons the player lists a stand-in on either side of
+  what's playing, and going to one is the button.
+- **The artwork** is read once when it changes: the bundle's from the APK's
+  assets (`findFile`'s `asset:///`), a document's from its content URI, or
+  the bytes.
+- **The service.** The contracts module declares `NowPlayingService`, a
+  `MediaSessionService`, started from the front with the first song. It
+  gives the notification, the shade's and lock screen's controls, and
+  the session to other controllers. A media notification needs no
+  `POST_NOTIFICATIONS`.
+- **Playing on** needs the manifest's `.audio(background: true)`. The
+  packager then adds `foregroundServiceType="mediaPlayback"` to the
+  service, with `FOREGROUND_SERVICE` and
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and `HostMediaPlayback` doesn't
+  pause a player that plays on. The service is in the foreground while
+  it plays. Without the option the service never asks for the
+  foreground, which Android would refuse without the type, and the app's
+  players pause when it leaves the front, as before.
+- **Interruptions** are the players' own audio focus (§6.10): Media3
+  pauses for a call and plays again after it.
+- **Not here:** `HostMediaPlayback.holdsApp`. Android keeps an app with a
+  foreground service running, so nothing here stops an app that plays.
 
 ## 7. The SwiftUI player
 
@@ -1541,6 +1615,13 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    keychain or a browser behind it yet; this one has both (§6.12). Its
    Android row could add that the app needs a `queries` entry to see the
    Custom Tabs service.
+17. **The now-playing docs.** `Contracts/NowPlaying.md` says Android needs
+   its own; this host has it, over `HostMediaPlayback` (§6.13). Its
+   Android row says the `MediaSessionService` holds the `ExoPlayer`; here
+   the session holds a stand-in player, so that the buttons go through
+   `HostMediaPlayback.remote`. Its manifest table could add that the
+   service is declared for every app, and only its type depends on
+   `background`.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say
