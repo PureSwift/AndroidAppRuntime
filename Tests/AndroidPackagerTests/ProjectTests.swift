@@ -79,6 +79,15 @@ import Testing
         #expect(categories == ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"])
     }
 
+    @Test func asksToWriteContactsUnlessTheAppOnlyReads() throws {
+        let writes = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["contacts"],
+                                                                      "RTCapabilityOptions": ["contacts": ["access": "readWrite"]]])))
+        #expect(writes.permissions.map(\.name) == ["android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS"])
+        let reads = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["contacts"],
+                                                                     "RTCapabilityOptions": ["contacts": ["access": "readOnly"]]])))
+        #expect(reads.permissions.map(\.name) == ["android.permission.READ_CONTACTS"])
+    }
+
     @Test func declaresTheNotificationsReceiverAndPermissions() throws {
         let plain = ManifestWriter(bundle: try bundle())
         #expect(!plain.manifest.contains("NotificationReceiver"))
