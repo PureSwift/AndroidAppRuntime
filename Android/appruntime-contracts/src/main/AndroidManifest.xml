@@ -18,5 +18,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/appruntime_clipboard_paths" />
         </provider>
+        <!-- What's playing, and its buttons (Plan.md §6.13). An app that
+             plays in the background has the packager add its
+             foregroundServiceType. -->
+        <service
+            android:name="org.pureswift.appruntime.contracts.NowPlayingService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
