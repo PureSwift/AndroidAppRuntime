@@ -41,6 +41,29 @@ public protocol MediaPlayerSystem: AnyObject {
     func canPlay(_ mimeType: String) -> Int32
 }
 
+/// What's playing, through the Kotlin
+/// `org.pureswift.appruntime.contracts.NowPlayingSystem` (`AndroidHostApp`
+/// binds it): one Media3 `MediaSession` for the app, whose buttons come
+/// back through `AndroidMedia.command`. Main thread only.
+public protocol NowPlayingSystem: AnyObject {
+
+    /// Shows what's playing. `commands` are `MediaRemoteCommands`' bits;
+    /// `duration` is `nil` for a live stream. Seconds.
+    func show(title: String, artist: String?, album: String?, commands: Int32, skipBackward: Double, skipForward: Double,
+              position: Double, duration: Double?, rate: Float, playing: Bool)
+
+    /// Shows nothing, and forgets the artwork.
+    func hide()
+
+    /// The artwork, read once: from `location`, a path, an `asset:///`
+    /// URI or a content URI, or `bytes`; neither for none.
+    func artwork(location: String, bytes: [UInt8])
+
+    /// Whether the session's service may hold the foreground while it
+    /// plays: the manifest's `.audio(background: true)`.
+    func setBackground(_ enabled: Bool)
+}
+
 /// The media players on Android (`Plan.md` §6.10): AppRuntime's
 /// `HostMediaPlayback` over an `ExoPlayer` per player, which the Kotlin
 /// side drives and reports from. `HostMediaPlayback` finds files through
@@ -50,6 +73,12 @@ public final class AndroidMediaPlatform: MediaPlatform {
 
     let system: any MediaPlayerSystem
 
+    /// Where what's playing is shown (§6.13); without it, nowhere.
+    let nowPlaying: (any NowPlayingSystem)?
+
+    /// The artwork the session has, while it shows something.
+    private var shownArtwork: HostArtwork??
+
     /// The engines by identifier, for what Android reports.
     var engines: [Int32: Weak] = [:]
 
@@ -57,8 +86,36 @@ public final class AndroidMediaPlatform: MediaPlatform {
         weak var engine: AndroidMediaEngine?
     }
 
-    public init(system: any MediaPlayerSystem) {
+    public init(system: any MediaPlayerSystem, nowPlaying: (any NowPlayingSystem)? = nil) {
         self.system = system
+        self.nowPlaying = nowPlaying
+    }
+
+    /// What's playing, to the session. The artwork goes only when it
+    /// changed, since it's read once.
+    public func showNowPlaying(_ shown: HostNowPlaying?) {
+        guard let nowPlaying else { return }
+        guard let shown else {
+            if shownArtwork != nil {
+                shownArtwork = nil
+                nowPlaying.hide()
+            }
+            return
+        }
+        if shownArtwork != .some(shown.artwork) {
+            switch shown.artwork {
+            case .file(let path)?:
+                nowPlaying.artwork(location: path, bytes: [])
+            case .data(let bytes, _)?:
+                nowPlaying.artwork(location: "", bytes: bytes)
+            case nil:
+                nowPlaying.artwork(location: "", bytes: [])
+            }
+            shownArtwork = .some(shown.artwork)
+        }
+        nowPlaying.show(title: shown.title, artist: shown.artist, album: shown.album, commands: shown.commands.rawValue,
+                        skipBackward: shown.skipBackward, skipForward: shown.skipForward,
+                        position: shown.position, duration: shown.duration, rate: shown.rate, playing: shown.isPlaying)
     }
 
     public func makeEngine(for player: HostMediaPlayback) -> any MediaEngine {
@@ -205,6 +262,7 @@ public enum AndroidMedia: HostModule {
         HostMediaPlayback.allowsNetwork = allowsNetwork
         HostMediaPlayback.allowsBackground = allowsBackground
         HostMediaPlayback.findFile = findFile
+        platform.nowPlaying?.setBackground(allowsBackground)
     }
 
     /// A file `Files` names, as Media3 takes it: the bundle's as an
@@ -260,6 +318,25 @@ public enum AndroidMedia: HostModule {
 
     public static func failed(_ id: Int32, code: Int32, message: String) {
         engine(id)?.player?.failed(MediaError(MediaError.Code(rawValue: code) ?? .unknown, message: message))
+    }
+
+    /// A button where the session shows: the notification, the lock
+    /// screen, headphones or a keyboard. 0 play, 1 pause, 2 next, 3
+    /// previous, 4 skip back, 5 skip forward, 6 seek to `seconds`.
+    /// `HostMediaPlayback` answers it on the now-playing player.
+    public static func command(_ command: Int32, seconds: Double) {
+        let remote: HostRemoteCommand
+        switch command {
+        case 0: remote = .play
+        case 1: remote = .pause
+        case 2: remote = .next
+        case 3: remote = .previous
+        case 4: remote = .skipBackward
+        case 5: remote = .skipForward
+        case 6: remote = .seek(to: max(seconds, 0))
+        default: return
+        }
+        HostMediaPlayback.remote(remote)
     }
 
     // MARK: The module
