@@ -10,6 +10,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -54,6 +56,31 @@ class DocumentSystem {
                 intent.type = "*/*"
                 intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
             }
+        }
+        return start(intent, id)
+    }
+
+    /**
+     * The system's photo picker, `MediaStore.ACTION_PICK_IMAGES`, where
+     * Android or Google Play services has it, and `ACTION_OPEN_DOCUMENT`
+     * for images and videos where neither does. `kinds`: bits, 1 images,
+     * 2 videos; none means both. Its URIs are read-only and last until the
+     * app stops, and it asks for no permission.
+     */
+    fun pickPhotos(id: Int, kinds: Int, multiple: Boolean): Boolean {
+        val activity = HostContext.activity ?: return false
+        val images = kinds and 1 != 0
+        val videos = kinds and 2 != 0
+        val type = when {
+            images && !videos -> ActivityResultContracts.PickVisualMedia.ImageOnly
+            videos && !images -> ActivityResultContracts.PickVisualMedia.VideoOnly
+            else -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+        }
+        val request = PickVisualMediaRequest.Builder().setMediaType(type).build()
+        val intent = if (multiple) {
+            ActivityResultContracts.PickMultipleVisualMedia().createIntent(activity, request)
+        } else {
+            ActivityResultContracts.PickVisualMedia().createIntent(activity, request)
         }
         return start(intent, id)
     }
