@@ -4,8 +4,44 @@
 armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
 notifications (§6.9), media players (§6.10), the clipboard (§6.11),
-secrets and sign-in (§6.12), now playing (§6.13), contacts (§6.14) and
-calendars (§6.15) came after them.
+secrets and sign-in (§6.12), now playing (§6.13), contacts (§6.14),
+calendars (§6.15) and text (§6.16) came after them.
+
+**Text:** AppRuntime's `TextStorage` contract and its `TextEditor` node. A
+guest holds a reference to a text the host keeps in an `EditText`, which
+the user edits, and loads, saves, reads, changes, searches and undoes it.
+
+- **How:** `AndroidHostText` gives AppRuntime's `HostTextStorage` an
+  `EditTextEngine` per text, over an `EditText` the Kotlin `TextSystem`
+  holds off screen. The engine keeps the undo history, since `EditText`
+  has none an app can call. A `TextEditor` node shows the text in a
+  composable the shell registers, with its font, keyboard and focus
+  (§6.16).
+- **ExampleText runs:** `Scripts/example-text.sh` packages AppRuntime's
+  `ExampleText` with a welcome.txt in CRLF, and drives it on the emulator
+  with UI Automator and `adb shell input`.
+  - The text opens in the `EditText` with `\n` only, and the app knows
+    it was CRLF.
+  - Edit gives the text the keyboard through `@FocusState`. Typing goes
+    in at the caret, and the app hears of each key and where the caret
+    went.
+  - Undo takes the typing back in one step, and Redo puts it back. Rule
+    puts a line in at the caret.
+  - Done puts the keyboard away.
+  - Find Next selects the match, and Replace All replaces in the text.
+  - Save writes it in CRLF again, and it's no longer edited.
+  - Typing in the note's editor reaches the app through its binding, and
+    moving the keyboard there takes it from the text, which the app
+    hears.
+
+  All 43 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 9 Swift tests cover the engine against a scripted
+  `EditText`: a text's life, a new text, the guest's edits and where the
+  selection goes, the user's edits, typing as one step, a keyboard
+  rewriting the word it composes, the caret ending a step, the redo
+  dropped by a new edit, and lines. 5 Kotlin tests cover the adapter: the
+  node, what it inherits, focus, and text fields in a row.
 
 **Calendars:** AppRuntime's Calendars contract. A guest reads the user's
 calendars, lists what happens in a range as Android expands it, and adds,
@@ -820,6 +856,7 @@ input.
 | `AndroidHostClipboard` | `Clipboard` (§6.11): AppRuntime's `HostClipboard` over `AndroidClipboardPlatform`, which asks `ClipboardSystem` |
 | `AndroidHostContacts` | `Contacts` (§6.14): AppRuntime's `HostContacts` over `AndroidContactDirectory`, which asks `ContactSystem` |
 | `AndroidHostCalendars` | `Calendars` (§6.15): AppRuntime's `HostCalendars` over `AndroidCalendarStore`, which asks `CalendarSystem` |
+| `AndroidHostText` | `TextStorage` (§6.16): AppRuntime's `HostTextStorage` over `AndroidTextPlatform`, an `EditTextEngine` per text over `TextSystem`, with the undo history |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
 | `AndroidHostMedia` | `MediaPlayback` (§6.10): AppRuntime's `HostMediaPlayback` over `AndroidMediaPlatform`, an `AndroidMediaEngine` per player over `MediaPlayerSystem`, and what's playing over `NowPlayingSystem` (§6.13) |
@@ -832,9 +869,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode` and `VideoPlayerNode` (the composables `GLSurface`, `WebView` and `VideoPlayer` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode`, `VideoPlayerNode` and `TextEditorNode` (the composables `GLSurface`, `WebView`, `VideoPlayer` and `TextEditor` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`, `TextSystem` with `TextEditorView`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1611,6 +1648,56 @@ needs `calendars`, `.full` or `.writeOnly`.
   `IllegalArgumentException` from the provider `unsupportedRecurrence`.
   The Kotlin side reports `unknown` as -1, since 0 is no error.
 
+### 6.16 Text
+
+AppRuntime's `TextStorage` contract (Contracts/TextEditor.md): a text the
+host holds and the user edits, shown where a `TextEditor` node names it.
+No capability: a text is memory, and its files follow `Files`' rules.
+
+- **`HostTextStorage` over `EditText`.** AppRuntime's `HostTextStorage`
+  reads and writes files off the main thread, through `HostFiles`;
+  decodes and encodes them; keeps `\n` as the only line break; moves
+  positions out of surrogate pairs; keeps whether the text is modified;
+  and searches. `AndroidHostText` gives it an `EditTextEngine` per text,
+  over the Kotlin `TextSystem`, which holds an `EditText` per text, made
+  off screen, by the text's identifier.
+- **Reading** is from the `Editable` itself, at once: the length, a range,
+  the selection, and lines, counted in Kotlin.
+- **The user's edits** come from a `TextWatcher`: where, what went and
+  what came in, told once the change is made, with a selection that moved
+  during it told after. An `InputFilter` turns typed and pasted `\r\n` and
+  `\r` into `\n`. The guest's own changes aren't reported, since the
+  engine made them.
+- **Undo** is the engine's, since `EditText` has none an app can call.
+  Each step keeps the text it removed. Typing on from the caret is one
+  step until a line break. So is a keyboard rewriting the word it's
+  composing, which `EditText` reports as replacing it. Moving the caret,
+  or the guest's edit, ends the step; a new text empties the history.
+- **Showing it.** A `TextEditor` node becomes a composable the shell
+  registers, `TextEditorNode`: a `TextEditorView` the text's `EditText`
+  moves into, as a page's `WebView` does (§6.4). When the node goes, the
+  text stays as it was.
+  - It takes composeui's inherited font size and weight, foreground color
+    and tint.
+  - The adapter passes what composeui doesn't keep: the font's design
+    (`monospaced` is `Typeface.MONOSPACE`), and `autocorrection` and
+    `autocapitalization`, as input type flags.
+  - A text that isn't editable has no key listener and no keyboard, and
+    still selects and scrolls.
+- **Focus.** On a `TextEditor`, `focused` requests the focus and shows
+  the keyboard, or gives the focus to the view's frame and hides the
+  keyboard, only when its value differs from what was last rendered or
+  reported. The user's move is reported as `focus`. The frame takes the
+  focus so that Android doesn't hand it to the first text it finds, which
+  may be the same one. On a `TextField`, `focused` is composeui's own.
+- **The largest text** is 1 MiB of UTF-16 units, since `EditText` lays out
+  the whole text. That's a choice, not a measurement.
+- **Encodings:** the five every host has. `supportsEncoding` is false for
+  the rest. Java's `Charset` has them, but `HostTextStorage` would call it
+  from its file queue, and calling Java from that thread is untried.
+- **Not tried:** a hardware keyboard's shortcuts, the platform's editing
+  menu, large files, and the other ABIs.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1661,12 +1748,17 @@ props, and a few nodes need work in composeui itself:
 | `Searchable` | `NavStack`'s `searches` | The adapter lifts each level's field onto its screen |
 | `GLSurface` | `Composable`, registered by the shell | A `GraphicsView` the surface draws in (§6.3) |
 | `WebView` | `Composable`, registered by the shell | A `WebPageView` the page's `WebView` moves into (§6.4) |
+| `TextEditor` | `Composable`, registered by the shell | A `TextEditorView` the text's `EditText` moves into, with the font's design and the keyboard the adapter says it inherits, and its focus (§6.16) |
 | Unknown types and modifiers | `EmptyView` | Logged once per type: the vocabulary is add-only |
 
 Modifiers map one to one: `padding`, `frame`, `offset`, `background`,
 `foregroundColor`, `tint`, `opacity`, `cornerRadius`, `border`, `shadow`,
 `font` and its weight, `italic`, `lineLimit`, `multilineTextAlignment`,
-`disabled`, `onTapGesture` and the accessibility modifiers.
+`disabled`, `onTapGesture` and the accessibility modifiers. `focused` is
+composeui's on a `TextField`, and the shell's on a `TextEditor`, which
+also takes `autocorrection` and `autocapitalization` (§6.16). A
+`TextField` in an `HStack` gets `flexible`, so it takes the width the
+row's other views leave, as in SwiftUI.
 `accessibilityIdentifier` becomes Compose's `testTag`, with
 `testTagsAsResourceId` on, so UI Automator can find nodes by ID.
 
@@ -1841,6 +1933,10 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    needs a sync identifier before its exceptions expand with it, which a
    host gives one on a calendar with no sync adapter. An exception takes
    its length as a `DURATION`. And Android keeps no URL for an event.
+20. **The text docs.** `Contracts/TextEditor.md` says Android needs its
+   own platform; it has one now (§6.16), and ExampleText runs on it. Its
+   Android row could add that the host keeps the five encodings only,
+   and that `maximumLength` is 1 MiB of UTF-16 units.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say
@@ -1882,6 +1978,12 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
   - [#80](https://github.com/PureSwift/AndroidSwiftUI/pull/80) (open)
     keeps the presenting palette in sheets that don't prefer another
     scheme. Until it merges, composeui's `master` has this problem.
+- **A text field in a row.** composeui's `TextField` fills the width it's
+  offered, so in an `HStack` it took the whole row and the views after it
+  got none. The adapter marks a row's text fields `flexible`, so they
+  share what the row's other views leave (§7.2). composeui could do this
+  itself. It also has no `autocorrection` or `autocapitalization` for its
+  text fields yet.
 - `SwiftBridge.sink` is global, which is fine with one renderer per
   process. Multiple scenes would need a sink per `TreeStore`.
 
