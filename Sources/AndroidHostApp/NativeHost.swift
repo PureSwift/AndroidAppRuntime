@@ -16,6 +16,7 @@ import AndroidHostNetworking
 import AndroidHostSecrets
 import AndroidHostContacts
 import AndroidHostCalendars
+import AndroidHostText
 import AndroidHostModules
 import AndroidHostUI
 import AndroidHostWebKit
@@ -52,6 +53,7 @@ public enum AndroidHostApp {
         SurfaceHub.shared.views = JavaGraphicsSystem()
         WebHub.shared.makeSystem = { JavaWebSystem() }
         HostDefaults.storage = AndroidDefaultsStorage { JavaDefaultsSystem() }
+        AndroidHostText.configure { JavaTextSystem() }
     }
 
     /// The app's exports, from the sealed slice linked into this library.
