@@ -164,6 +164,7 @@ class RenderSurface(private val events: RenderEvents) : CallbackSink {
             }
             is Action.ChangeTo -> send(action.node, RenderEventKind.CHANGE, action.value)
             is Action.ChangeDate -> value.double?.let { send(action.node, RenderEventKind.CHANGE, IRValue.Dbl(it / 1000)) }
+            is Action.Focus -> value.bool?.let { send(action.node, RenderEventKind.FOCUS, IRValue.Bool(it)) }
             is Action.Pop -> send(action.node, RenderEventKind.POP, IRValue.Int(action.levels.toLong()))
             is Action.Sequence -> action.actions.forEach { perform(it, value) }
         }
