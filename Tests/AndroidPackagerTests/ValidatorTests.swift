@@ -88,6 +88,17 @@ import Testing
         #expect(!diagnostics.contains { $0.message.contains("graphics") })
     }
 
+    @Test func runsBackgroundTasks() throws {
+        let tasks: [String: Any] = ["Name": "org.pureswift.background.Tasks", "Version": 1, "Kind": "contract"]
+        let delegate: [String: Any] = ["Name": "org.pureswift.background.TasksDelegate", "Version": 1, "Kind": "callback"]
+        let callback: [String: Any] = ["Name": "org.pureswift.background.Callback", "Version": 1, "Kind": "callback"]
+        let info = Fixtures.info(["RTCapabilities": ["backgroundTasks"], "RTContracts": [Fixtures.renderer, tasks, delegate, callback],
+                                  "RTBackgroundTasks": [["Identifier": "org.example.sync", "Kind": "refresh"]]])
+        let diagnostics = try validate(info)
+        #expect(!diagnostics.contains { $0.severity == .error })
+        #expect(!diagnostics.contains { $0.message.contains("backgroundTasks") })
+    }
+
     @Test func checksSlices() throws {
         let wrong = try validate(slices: [.arm64: 62])
         #expect(wrong.contains(.error("android-arm64-v8a slice: objects are for ELF machine [62], not 183 (aarch64)")))

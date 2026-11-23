@@ -5,7 +5,43 @@ armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
 notifications (§6.9), media players (§6.10), the clipboard (§6.11),
 secrets and sign-in (§6.12), now playing (§6.13), contacts (§6.14),
-calendars (§6.15) and text (§6.16) came after them.
+calendars (§6.15), text (§6.16) and background tasks (§6.17) came after
+them.
+
+**Background tasks:** AppRuntime's BackgroundTasks contract. A guest asks
+for a task the system runs from time to time, while the app is open or
+closed, and the host starts the app with no window to run it.
+
+- **How:** `AndroidHostBackgroundTasks` gives AppRuntime's
+  `HostBackgroundTasks` an `AndroidBackgroundScheduler` over
+  `WorkManager`, which keeps the requests across launches and restarts. A
+  `BackgroundTaskWorker` runs each one, starting the app in the
+  background first if its process is new (§5, §6.17).
+- **ExampleBackground runs:** `Scripts/example-background.sh` packages
+  AppRuntime's `ExampleBackground` with a manifest that names its refresh
+  task, and drives it on the emulator, having JobScheduler run the work
+  with `cmd jobscheduler run -f`.
+  - The app starts with background work on, nothing scheduled, and no
+    time to finish a save, since Android has nothing that gives it.
+  - Keep Fresh asks for the task every quarter of an hour, which becomes
+    a JobScheduler job, and WorkManager runs it at once, with the app
+    open.
+  - With the app's process gone, JobScheduler runs the job. Android
+    starts the process with no Activity, the host starts the app in the
+    background, and the task runs and succeeds. Opening the app then
+    shows the run, in the same process.
+  - Stop withdraws the task, and its job goes.
+  - Restricted in Settings, the app says background work is off.
+
+  WorkManager runs periodic work no sooner than its period, even when
+  JobScheduler is made to, so the check waits a quarter of an hour before
+  the background start, and takes about 17 minutes. All 22 checks pass
+  both from the native slice and from `App.wasm` through wasm2c.
+- **Unit tests:** 10 Swift tests cover the manifest's tasks, the status, a
+  request as `WorkManager` gets it, what the manifest doesn't allow, a
+  refusal, cancelling and listing, a run and how it went, a run with no
+  delegate, a run stopped early, and activities. The packager's tests
+  cover the capability.
 
 **Text:** AppRuntime's `TextStorage` contract and its `TextEditor` node. A
 guest holds a reference to a text the host keeps in an `EditText`, which
@@ -856,6 +892,7 @@ input.
 | `AndroidHostClipboard` | `Clipboard` (§6.11): AppRuntime's `HostClipboard` over `AndroidClipboardPlatform`, which asks `ClipboardSystem` |
 | `AndroidHostContacts` | `Contacts` (§6.14): AppRuntime's `HostContacts` over `AndroidContactDirectory`, which asks `ContactSystem` |
 | `AndroidHostCalendars` | `Calendars` (§6.15): AppRuntime's `HostCalendars` over `AndroidCalendarStore`, which asks `CalendarSystem` |
+| `AndroidHostBackgroundTasks` | `BackgroundTasks` (§6.17): AppRuntime's `HostBackgroundTasks` over `AndroidBackgroundScheduler`, which asks `BackgroundTaskSystem`, and `BackgroundTaskHub` for what `WorkManager` runs |
 | `AndroidHostText` | `TextStorage` (§6.16): AppRuntime's `HostTextStorage` over `AndroidTextPlatform`, an `EditTextEngine` per text over `TextSystem`, with the undo history |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
@@ -869,9 +906,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode`, `VideoPlayerNode` and `TextEditorNode` (the composables `GLSurface`, `WebView`, `VideoPlayer` and `TextEditor` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `AppRuntime.start` (the app, from an Activity or in the background), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode`, `VideoPlayerNode` and `TextEditorNode` (the composables `GLSurface`, `WebView`, `VideoPlayer` and `TextEditor` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`, `TextSystem` with `TextEditorView`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`, `TextSystem` with `TextEditorView`, `BackgroundTaskSystem` with `BackgroundTaskWorker`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -903,6 +940,14 @@ the only copies linked (DarwinAppRuntime's `HostRuntime.md` §8).
    tree is in the store before `rt_main` returns.
 6. **From then on**, the guest runs only when Android calls in: events,
    listeners, timers and lifecycle.
+
+**A background start.** When `WorkManager` runs one of the app's tasks
+and the process is new, there's no Activity. `BackgroundTaskWorker` calls
+`AppRuntime.start` with `background`, which does steps 3 to 5 with the
+process-wide surface, after setting the app's state to `.background`, so
+the app's `init` reads it. The surface keeps the trees it's sent. If the
+user opens the app while the process lives, the Activity shows that
+surface, and its lifecycle makes the app active (§6.17).
 
 Configuration changes (rotation, dark mode, locale) must not restart the
 guest:
@@ -1698,6 +1743,43 @@ No capability: a text is memory, and its files follow `Files`' rules.
 - **Not tried:** a hardware keyboard's shortcuts, the platform's editing
   menu, large files, and the other ABIs.
 
+### 6.17 Background tasks
+
+AppRuntime's `BackgroundTasks` contract (Contracts/BackgroundTasks.md):
+work the system runs from time to time, while the app is open or closed.
+It needs `.backgroundTasks`, which asks Android for no permission, and the
+tasks the manifest names (`RTBackgroundTasks`).
+
+- **`HostBackgroundTasks` over `WorkManager`.** AppRuntime's
+  `HostBackgroundTasks` checks each request against the manifest's tasks
+  and the 900-second floor, numbers runs, and tells the system how each
+  went, once. `AndroidBackgroundScheduler` is its scheduler, over the
+  Kotlin `BackgroundTaskSystem`.
+- **A request** is unique work named for its task, replacing the one
+  before. One with an interval is a `PeriodicWorkRequest`, which
+  `WorkManager` repeats by itself; one without is a `OneTimeWorkRequest`.
+  `earliest` is the initial delay. The network and charging are
+  `Constraints`, and a processing task also waits for the device to be
+  idle. `WorkManager` keeps requests across launches and restarts of the
+  device, so the host keeps no file of its own. `pending` lists the
+  app's work that isn't finished.
+- **A run** is a `BackgroundTaskWorker`, a `ListenableWorker`, started on
+  the main thread. It starts the app if it isn't running (§5), then calls
+  `HostBackgroundTasks.start`. The guest's `complete` finishes the work,
+  succeeded or failed. When `WorkManager` stops the work early,
+  `onStopped` is the guest's `didExpire`.
+- **Activities** are `0`, already expired: nothing on Android holds a
+  process for a moment's work. The app goes on only while the system
+  leaves it, and `timeRemaining` is −1.
+- **`status`** is `granted`, or `denied` when the user restricted the app
+  in Settings' battery page (`ActivityManager.isBackgroundRestricted`).
+  Nothing prompts for it.
+- **Starting the process.** `WorkManager` in a new process may decide the
+  app was force-stopped and reschedule its work, which drops a job that
+  started the process; the next one runs.
+- **Not tried:** a run's time running out, a processing task, a request's
+  constraints, and a task when the device restarts.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1937,6 +2019,12 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    own platform; it has one now (§6.16), and ExampleText runs on it. Its
    Android row could add that the host keeps the five encodings only,
    and that `maximumLength` is 1 MiB of UTF-16 units.
+21. **The background docs.** `Contracts/BackgroundTasks.md` says Android
+   isn't written in Swift and implements the contract itself, and that
+   Android needs its own scheduler. This host is Swift, so it uses
+   `HostBackgroundTasks` with a scheduler over `WorkManager` (§6.17), and
+   has started a guest in the background for a task, on the emulator.
+   Its Android row is right that an activity is `0`.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say

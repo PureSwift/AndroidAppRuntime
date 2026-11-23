@@ -2,7 +2,10 @@ package org.pureswift.appruntime
 
 import android.app.Application
 import android.content.ComponentCallbacks2
+import android.content.Context
+import android.os.LocaleList
 import android.util.Log
+import org.pureswift.appruntime.contracts.BackgroundTaskSystem
 import org.pureswift.appruntime.contracts.HostContext
 import org.pureswift.appruntime.ui.LazyGridView
 import org.pureswift.appruntime.ui.RenderSurface
@@ -24,6 +27,9 @@ open class AppRuntimeApplication : Application() {
         VideoPlayerNode.register()
         TextEditorNode.register()
         TextSelectionNode.register()
+        // A task WorkManager runs while the app is closed starts it here,
+        // with no window (Documentation/Plan.md §6.17).
+        BackgroundTaskSystem.startApp = { AppRuntime.start(this, background = true) }
     }
 
     @Deprecated("Called by the system")
@@ -55,4 +61,33 @@ object AppRuntime {
     /** Whether `rt_main` ran: the guest keeps running across Activities. */
     var started = false
         internal set
+
+    /**
+     * Starts the app with the keys in `assets/rt/Info.plist`: null, or why
+     * it couldn't. Once it's running, an Activity gets the same app, and
+     * shows the surface it has drawn to. `background`: the system started
+     * it to run a task, with no window, and it's in the background until an
+     * Activity shows it (Documentation/Plan.md §6.17).
+     */
+    fun start(context: Context, background: Boolean): String? {
+        if (started && background) return null
+        val info = try {
+            context.assets.open("rt/Info.plist").use { it.readBytes() }
+        } catch (error: java.io.IOException) {
+            return "This APK has no assets/rt/Info.plist."
+        }
+        val result = NativeHost.start(info, languages(), surface, background)
+        if (result.isNotEmpty()) {
+            Log.e(TAG, result)
+            return result
+        }
+        started = true
+        return null
+    }
+
+    /** The user's languages, as BCP 47 tags. */
+    fun languages(): Array<String> {
+        val locales = LocaleList.getDefault()
+        return Array(locales.size()) { locales[it].toLanguageTag() }
+    }
 }
