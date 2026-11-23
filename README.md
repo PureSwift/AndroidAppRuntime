@@ -15,12 +15,17 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** calendars: an app can read the user's calendars, list what
+**Status:** text: an app can hold a text in an `EditText` the user types
+in, and load and save it, read and change it, find and replace in it,
+undo and redo, and give it the keyboard with `@FocusState`. AppRuntime's
+`ExampleText` runs on the emulator.
+
+![ExampleText in the emulator](Documentation/ExampleText-android.png)
+
+Before that, calendars: an app can read the user's calendars, list what
 happens in a month as Android expands it, and add, move and cancel events,
 one occurrence or the rest of a series, through `CalendarContract`.
 AppRuntime's `ExampleCalendar` runs on the emulator.
-
-![ExampleCalendar in the emulator](Documentation/ExampleCalendar-android.png)
 
 Before that, contacts: an app can read the user's address book, find
 people by name with Android's own search, and add, change and remove
@@ -165,7 +170,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts and Calendars, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts, Calendars and Text, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -417,6 +422,25 @@ content`:
 - an event another app adds is listed, as the store says it changed.
 
 The check removes its calendars, and their events, when it's done.
+
+Text has its own check, with AppRuntime's `ExampleText` and a welcome.txt
+in CRLF:
+
+```sh
+Scripts/example-text.sh [--engine wasm2c]
+```
+
+`Scripts/example-text-check.py` drives the app with UI Automator and `adb
+shell input`:
+
+- the text opens in an `EditText`, and the app knows it was CRLF;
+- Edit gives it the keyboard, and typing goes in at the caret;
+- Undo takes the typing back in one step, and Redo puts it back;
+- Rule puts a line in at the caret, and Done puts the keyboard away;
+- Find Next selects the match, and Replace All replaces in the text;
+- Save writes it in CRLF again;
+- typing in the note's editor reaches the app through its binding, and
+  takes the keyboard from the text.
 
 ## Packaging
 
