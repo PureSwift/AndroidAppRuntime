@@ -98,6 +98,23 @@ import Testing
         }
     }
 
+    /// Reading asks for the media permissions, and Android 14's partial one;
+    /// adding asks for nothing from Android 10.
+    @Test func asksForThePhotoPermissionsOfItsLevel() throws {
+        let reads = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["photoLibrary"],
+                                                                     "RTCapabilityOptions": ["photoLibrary": ["access": "readWrite"]]])))
+        #expect(reads.permissions.map(\.name) == [
+            "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.READ_EXTERNAL_STORAGE",
+            "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO",
+            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        ])
+        #expect(reads.permissions.map(\.maxSDK) == [28, 32, nil, nil, nil])
+        let adds = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["photoLibrary"],
+                                                                    "RTCapabilityOptions": ["photoLibrary": ["access": "addOnly"]]])))
+        #expect(adds.permissions.map(\.name) == ["android.permission.WRITE_EXTERNAL_STORAGE"])
+        #expect(adds.permissions.map(\.maxSDK) == [28])
+    }
+
     @Test func declaresTheNotificationsReceiverAndPermissions() throws {
         let plain = ManifestWriter(bundle: try bundle())
         #expect(!plain.manifest.contains("NotificationReceiver"))
