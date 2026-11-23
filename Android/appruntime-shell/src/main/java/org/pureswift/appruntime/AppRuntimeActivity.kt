@@ -32,6 +32,7 @@ import org.pureswift.appruntime.contracts.DocumentSystem
 import org.pureswift.appruntime.contracts.HostContext
 import org.pureswift.appruntime.contracts.NotificationSystem
 import org.pureswift.appruntime.contracts.PermissionSystem
+import org.pureswift.appruntime.contracts.PhotoSystem
 
 /**
  * The app's one Activity (Documentation/Plan.md §5): starts the guest with
@@ -135,6 +136,7 @@ open class AppRuntimeActivity : ComponentActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (AppRuntime.started && PhotoSystem.deliver(requestCode, resultCode)) return
         if (AppRuntime.started) DocumentSystem.deliver(requestCode, resultCode, data)
     }
 
