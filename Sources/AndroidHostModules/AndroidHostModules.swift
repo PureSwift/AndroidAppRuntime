@@ -20,6 +20,7 @@ import AndroidHostNetworking
 import AndroidHostSecrets
 import AndroidHostContacts
 import AndroidHostCalendars
+import AndroidHostCamera
 import AndroidHostText
 import AndroidHostUI
 import AndroidHostWebKit
@@ -53,5 +54,6 @@ public enum AndroidHostModules {
         AndroidHostAuthentication.self,
         AndroidHostBackgroundTasks.self,
         AndroidHostPhotos.self,
+        AndroidHostCamera.self,
     ]
 }
