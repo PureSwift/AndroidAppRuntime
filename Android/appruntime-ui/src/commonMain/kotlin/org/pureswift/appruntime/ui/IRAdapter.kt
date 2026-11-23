@@ -242,6 +242,12 @@ class IRAdapter(var dark: Boolean = false) {
                     "flexible" to bool(true), children = emptyList(),
                 )
             }
+            // The shell registers what draws a photo from the system's
+            // thumbnails. Like the web view, it takes the space offered.
+            "Photo" -> node(
+                "Composable", "name" to str(PHOTO), "asset" to str(n["asset"].string ?: ""),
+                "scaling" to str(n["scaling"].string ?: "fill"), "flexible" to bool(true), children = emptyList(),
+            )
             // The shell registers the view a player shows in (PlayerView).
             // Its size is the frame the guest gives it.
             "VideoPlayer" -> node(
@@ -681,6 +687,9 @@ class IRAdapter(var dark: Boolean = false) {
 
         /** The registered composable a `TextEditor` node becomes. */
         const val TEXT_EDITOR = "org.pureswift.appruntime.TextEditor"
+
+        /** The registered composable a `Photo` node becomes. */
+        const val PHOTO = "org.pureswift.appruntime.Photo"
 
         /** The registered composable a `VideoPlayer` node becomes. */
         const val VIDEO_PLAYER = "org.pureswift.appruntime.VideoPlayer"

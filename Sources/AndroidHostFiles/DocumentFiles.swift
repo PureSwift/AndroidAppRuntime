@@ -98,8 +98,14 @@ public enum DocumentGrants {
 
     nonisolated(unsafe) private static var grants: [Int32: ContentGrant] = [:]
 
+    /// The first directory a document is given. `HostFiles` numbers its own
+    /// grants from `FileDirectory.firstGrant`, for the files other
+    /// contracts give, such as a photo's original; the documents start far
+    /// above them, so the two never meet.
+    public static let firstDirectory: Int32 = 1 << 20
+
     /// The next grant's directory. A value is never used twice in a run.
-    nonisolated(unsafe) private static var next = FileDirectory.firstGrant
+    nonisolated(unsafe) private static var next = firstDirectory
 
     /// Makes `grant` a directory `Files` reaches until it's revoked.
     public static func grant(_ grant: ContentGrant) -> FileDirectory {

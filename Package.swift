@@ -81,6 +81,7 @@ let package = Package(
         .library(name: "AndroidHostCalendars", targets: ["AndroidHostCalendars"]),
         .library(name: "AndroidHostText", targets: ["AndroidHostText"]),
         .library(name: "AndroidHostBackgroundTasks", targets: ["AndroidHostBackgroundTasks"]),
+        .library(name: "AndroidHostPhotos", targets: ["AndroidHostPhotos"]),
         .library(name: "AndroidHostAuthentication", targets: ["AndroidHostAuthentication"]),
         // The packager, which runs on the build machine (§8).
         .library(name: "AndroidPackager", targets: ["AndroidPackager"]),
@@ -263,6 +264,14 @@ let package = Package(
             swiftSettings: host
         ),
         .target(
+            name: "AndroidHostPhotos",
+            dependencies: [
+                "AndroidHost", runtime("DynamicPhotos"), runtime("RuntimePhotos"), runtime("DynamicRuntime"),
+                runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .target(
             name: "AndroidHostAuthentication",
             dependencies: [
                 "AndroidHost", runtime("DynamicAuthentication"), runtime("RuntimeAuthentication"), runtime("DynamicRuntime"),
@@ -279,6 +288,7 @@ let package = Package(
                 "AndroidHostDefaults", "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications",
                 "AndroidHostMedia", "AndroidHostClipboard", "AndroidHostSecrets", "AndroidHostAuthentication",
                 "AndroidHostContacts", "AndroidHostCalendars", "AndroidHostText", "AndroidHostBackgroundTasks",
+                "AndroidHostPhotos",
             ],
             swiftSettings: host
         ),
@@ -290,7 +300,7 @@ let package = Package(
                 "AndroidHostNFC", "AndroidHostGraphics", "AndroidHostWebKit", "AndroidHostFiles", "AndroidHostDefaults",
                 "AndroidHostModelStore", "AndroidHostDocuments", "AndroidHostNotifications", "AndroidHostMedia",
                 "AndroidHostClipboard", "AndroidHostSecrets", "AndroidHostAuthentication", "AndroidHostContacts",
-                "AndroidHostCalendars", "AndroidHostText", "AndroidHostBackgroundTasks", runtime("CRuntime"),
+                "AndroidHostCalendars", "AndroidHostText", "AndroidHostBackgroundTasks", "AndroidHostPhotos", runtime("CRuntime"),
                 .product(name: "SwiftJavaStatic", package: "swift-java"),
             ],
             swiftSettings: host,
@@ -432,6 +442,14 @@ let package = Package(
             dependencies: [
                 "AndroidHostBackgroundTasks", "AndroidHost", runtime("DynamicBackgroundTasks"),
                 runtime("RuntimeBackgroundTasks"), runtime("DynamicRuntime"), runtime("RuntimeHost"),
+            ],
+            swiftSettings: host
+        ),
+        .testTarget(
+            name: "AndroidHostPhotosTests",
+            dependencies: [
+                "AndroidHostPhotos", "AndroidHost", runtime("DynamicPhotos"), runtime("RuntimePhotos"),
+                runtime("DynamicRuntime"), runtime("RuntimeHost"),
             ],
             swiftSettings: host
         ),

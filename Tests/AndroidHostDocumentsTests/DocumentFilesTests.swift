@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import DynamicFiles
+import RuntimeHost
 @testable import AndroidHostFiles
 
 /// `Files` on the documents the user gave: `FileEngine` over a provider in
@@ -67,7 +68,7 @@ import DynamicFiles
 
     @Test func aFileIsItsDirectorysEmptyPath() {
         let file = grant(fileURI, kind: .file)
-        #expect(file >= FileDirectory.firstGrant)
+        #expect(file >= DocumentGrants.firstDirectory)
         #expect(text(engine.read(file, "", offset: 0, length: -1)) == "Dear")
         #expect(text(engine.read(file, "", offset: 1, length: 2)) == "ea")
         #expect(text(engine.read(file, "", offset: 9, length: -1)) == "")
@@ -81,6 +82,32 @@ import DynamicFiles
         #expect(engine.remove(file, "") == .failure(.invalidPath))
         #expect(engine.makeDirectory(file, "") == .failure(.alreadyExists))
         #expect(engine.makeDirectory(file, "x") == .failure(.notDirectory))
+    }
+
+    /// What another contract gives through `HostFiles`, such as a photo's
+    /// original, is read by `HostFiles`, and never meets a document's number.
+    @Test func hostFilesOwnGrantsAreItsToRead() throws {
+        let original = root.appendingPathComponent("cache/original.jpg")
+        try Data("pixels".utf8).write(to: original)
+        let photo = HostFiles.grant(HostFiles.Grant(path: original.path, kind: .file, isWritable: false))
+        defer { HostFiles.revoke(photo) }
+        // An engine made now has the grant: other suites configure `HostFiles`
+        // in parallel, and the app does once.
+        let engine = try FileEngine(AndroidFiles.Configuration(
+            directories: AndroidFiles.Configuration.directories(files: root.appendingPathComponent("files").path,
+                                                                cache: root.appendingPathComponent("cache").path),
+            assets: nil,
+            content: content,
+            maximumTransfer: 64
+        ))
+        let file = grant(fileURI, kind: .file)
+        #expect(photo.rawValue < DocumentGrants.firstDirectory)
+        #expect(photo.rawValue != file)
+        #expect(text(engine.read(photo.rawValue, "", offset: 0, length: -1)) == "pixels")
+        #expect(engine.write(photo.rawValue, "", data: [1], mode: FileWriteMode.replace.rawValue) == .failure(.readOnly))
+        #expect(text(engine.read(file, "", offset: 0, length: -1)) == "Dear")
+        HostFiles.revoke(photo)
+        #expect(engine.read(photo.rawValue, "", offset: 0, length: -1) == .failure(.notPermitted))
     }
 
     // MARK: A folder
@@ -149,7 +176,7 @@ import DynamicFiles
         #expect(engine.read(file, "", offset: 0, length: -1) == .failure(.notPermitted))
         #expect(engine.write(file, "", data: [], mode: 0) == .failure(.notPermitted))
         // One that was never given.
-        #expect(engine.list(FileDirectory.firstGrant + 100_000, "") == .failure(.notPermitted))
+        #expect(engine.list(DocumentGrants.firstDirectory + 100_000, "") == .failure(.notPermitted))
     }
 
     @Test func aProvidersErrorsReachTheGuest() {

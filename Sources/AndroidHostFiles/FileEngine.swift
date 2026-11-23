@@ -2,9 +2,10 @@ import DynamicFiles
 import RuntimeHost
 
 /// The contract's operations, done synchronously: `HostFiles` for the
-/// writable directories, run inline, `BundleFiles` for `bundle`, and
-/// `DocumentFiles` for the documents the user gave (256 and up). Used from
-/// one thread at a time.
+/// writable directories and its own grants, run inline, `BundleFiles` for
+/// `bundle`, and `DocumentFiles` for the documents the user gave
+/// (`DocumentGrants.firstDirectory` and up). Used from one thread at a
+/// time.
 struct FileEngine: @unchecked Sendable {
 
     /// An operation's answer.
@@ -236,8 +237,10 @@ struct FileEngine: @unchecked Sendable {
 
     // MARK: Moving and copying across documents
 
+    /// A document the user gave. Grants below `DocumentGrants.firstDirectory`
+    /// are `HostFiles`' own, and it answers for them.
     static func isDocument(_ directory: Int32) -> Bool {
-        directory >= FileDirectory.firstGrant
+        directory >= DocumentGrants.firstDirectory
     }
 
     /// A move or copy with a document on either side, made of reads, writes,

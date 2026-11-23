@@ -186,7 +186,7 @@ final class Listener: DocumentsDelegate {
         #expect(answer.grants[0].contentType() == "text/plain")
         #expect(answer.grants[0].isWritable())
         let directory = answer.grants[0].directory()
-        #expect(directory >= FileDirectory.firstGrant)
+        #expect(directory >= DocumentGrants.firstDirectory)
         #expect(text(directory) == "Dear")
         // Letting go ends the access.
         answer.grants = []

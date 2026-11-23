@@ -250,6 +250,20 @@ class IRAdapterTests {
     }
 
     @Test
+    fun mapsAPhotoToTheShellsView() {
+        val photo = IRNode("Photo", 2, mapOf("asset" to IRValue.Str("image/42"), "scaling" to IRValue.Str("fit")))
+        val node = show(IRNode("VStack", 1, children = listOf(photo))).find("2")!!
+        assertEquals("Composable", node.type)
+        assertEquals(IRAdapter.PHOTO, (node.props["name"] as JsonPrimitive).content)
+        assertEquals("image/42", (node.props["asset"] as JsonPrimitive).content)
+        assertEquals("fit", (node.props["scaling"] as JsonPrimitive).content)
+        assertEquals("true", (node.props["flexible"] as JsonPrimitive).content)
+        // Without its scaling: it fills, and crops.
+        val plain = show(IRNode("VStack", 1, children = listOf(IRNode("Photo", 2, mapOf("asset" to IRValue.Str("video/7")))))).find("2")!!
+        assertEquals("fill", (plain.props["scaling"] as JsonPrimitive).content)
+    }
+
+    @Test
     fun keepsCallbackIDsAcrossUpdates() {
         val tree = IRNode("VStack", 1, children = listOf(button(2, "+"), text(3, "0")))
         val first = show(tree)

@@ -13,6 +13,7 @@ import AndroidHostMedia
 import AndroidHostMotion
 import AndroidHostNFC
 import AndroidHostNotifications
+import AndroidHostPhotos
 import AndroidHostNetworking
 import AndroidHostSecrets
 import AndroidHostContacts
@@ -94,6 +95,10 @@ public enum AndroidHostApp {
         }
         if info.capabilities.contains(.calendars) {
             CalendarsBridge.configure(writeOnly: CapabilityOptions(Data(data)).value("calendars", "access") == "writeOnly")
+        }
+        if info.capabilities.contains(.photoLibrary) {
+            AndroidHostPhotos.configure(JavaPhotoSystem(),
+                                        allowsReading: CapabilityOptions(Data(data)).value("photoLibrary", "access") != "addOnly")
         }
         if info.capabilities.contains(.backgroundTasks) {
             let entries = (try? PropertyListDecoder().decode(BackgroundTaskEntries.self, from: Data(data)))?.entries ?? []
@@ -244,6 +249,7 @@ extension NativeHost {
             // in Settings.
             AndroidHostContacts.refresh()
             AndroidHostCalendars.refresh()
+            AndroidHostPhotos.refresh()
             // Back from a sign-in page, with or without its redirect.
             AndroidHostAuthentication.presenter?.didBecomeActive()
             // The user may have changed a permission in Settings.

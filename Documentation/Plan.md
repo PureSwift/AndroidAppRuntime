@@ -5,8 +5,50 @@ armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
 notifications (§6.9), media players (§6.10), the clipboard (§6.11),
 secrets and sign-in (§6.12), now playing (§6.13), contacts (§6.14),
-calendars (§6.15), text (§6.16) and background tasks (§6.17) came after
-them.
+calendars (§6.15), text (§6.16), background tasks (§6.17) and the photo
+library (§6.18) came after them.
+
+**Photos:** AppRuntime's Photos contract. A guest browses the user's photos
+and videos, newest first, a page at a time, with their albums; shows them
+in `Photo` nodes the player draws from Android's thumbnails; opens an
+original as a file; adds photos; and deletes them with Android's leave.
+
+- **How:** `AndroidHostPhotos` gives AppRuntime's `HostPhotos` an
+  `AndroidPhotoStore` over `MediaStore`. Access is Android's media
+  permissions, with Android 14's choice of some photos as `limited`, and
+  deleting goes through the system's own question. The shell draws a
+  `Photo` node from `loadThumbnail` (§6.18).
+- **ExamplePhotos runs:** `Scripts/example-photos.sh` packages AppRuntime's
+  `ExamplePhotos` with a manifest that reads and writes the library. The
+  check puts four JPEGs of one colour each, with their own dates, and a
+  screen recording on the emulator, and drives the app.
+  - Allow asks with Android's dialog, and the app shows four of what the
+    device has, with the check's albums. More shows four more.
+  - An album shows its photos newest first, drawn from their thumbnails:
+    the screenshot has their colours, in that order.
+  - A photo tapped is shown large, with its size, and its original is the
+    file the check put there, byte for byte.
+  - The other album has the video.
+  - A photo another app adds is seen, as the library says it changed.
+  - Delete asks with Android's question, and the photo goes from the
+    device.
+
+  All 25 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Two fixes on the way.**
+  - A change report watched every file in shared storage, which any app's
+    write changes; UI Automator's own dumps reloaded the gallery. It
+    watches the image and video collections now.
+  - `HostPhotos` grants an original through `HostFiles`, and Android's
+    file routing sent every grant to the documents the user gave, which
+    didn't know it. Documents are numbered from 2^20 now, and `HostFiles`
+    answers for its own grants below that (§6.5).
+- **Unit tests:** 10 Swift tests cover access from Android's permissions
+  at each API level, asking, an app that only adds, a fetch and its pages,
+  an asset's and an album's fields, an original and its release, errors,
+  deleting with the system's answer, and changes. A Documents test covers
+  `HostFiles`' grants beside the documents', the packager's tests the
+  permissions, and the adapter's the `Photo` node.
 
 **Background tasks:** AppRuntime's BackgroundTasks contract. A guest asks
 for a task the system runs from time to time, while the app is open or
@@ -893,6 +935,7 @@ input.
 | `AndroidHostContacts` | `Contacts` (§6.14): AppRuntime's `HostContacts` over `AndroidContactDirectory`, which asks `ContactSystem` |
 | `AndroidHostCalendars` | `Calendars` (§6.15): AppRuntime's `HostCalendars` over `AndroidCalendarStore`, which asks `CalendarSystem` |
 | `AndroidHostBackgroundTasks` | `BackgroundTasks` (§6.17): AppRuntime's `HostBackgroundTasks` over `AndroidBackgroundScheduler`, which asks `BackgroundTaskSystem`, and `BackgroundTaskHub` for what `WorkManager` runs |
+| `AndroidHostPhotos` | `Photos` (§6.18): AppRuntime's `HostPhotos` over `AndroidPhotoStore`, which asks `PhotoSystem`, with Android's media permissions as access |
 | `AndroidHostText` | `TextStorage` (§6.16): AppRuntime's `HostTextStorage` over `AndroidTextPlatform`, an `EditTextEngine` per text over `TextSystem`, with the undo history |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
 | `AndroidHostAuthentication` | `WebAuthentication` (§6.12): AppRuntime's `HostWebAuthentication` over `AndroidWebAuthenticationPresenter`, which asks `AuthenticationSystem` |
@@ -906,9 +949,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `AppRuntime.start` (the app, from an Activity or in the background), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode`, `VideoPlayerNode` and `TextEditorNode` (the composables `GLSurface`, `WebView`, `VideoPlayer` and `TextEditor` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `AppRuntime.start` (the app, from an Activity or in the background), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode`, `VideoPlayerNode`, `TextEditorNode` and `PhotoNode` (the composables `GLSurface`, `WebView`, `VideoPlayer`, `TextEditor` and `Photo` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`, `TextSystem` with `TextEditorView`, `BackgroundTaskSystem` with `BackgroundTaskWorker`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`, `TextSystem` with `TextEditorView`, `BackgroundTaskSystem` with `BackgroundTaskWorker`, `PhotoSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1302,7 +1345,9 @@ opened with. It needs `userFiles`, which prompts for nothing.
   host implements the four contracts itself (`AndroidHostDocuments`), and
   `Files` reaches a document through its own grants (`DocumentGrants` in
   `AndroidHostFiles`). Directories from 256 up are grants, as the contract
-  says; releasing the guest's `DocumentGrant` ends one, and its directory
+  says: a document's from 2^20, and below that `HostFiles`' own, for what
+  another contract gives as a file, such as a photo's original (§6.18).
+  Releasing the guest's `DocumentGrant` ends one, and its directory
   answers `notPermitted`.
 - **The pickers** are `ACTION_OPEN_DOCUMENT`, `ACTION_OPEN_DOCUMENT_TREE`
   and `ACTION_CREATE_DOCUMENT`, started from the Activity, whose
@@ -1780,6 +1825,53 @@ tasks the manifest names (`RTBackgroundTasks`).
 - **Not tried:** a run's time running out, a processing task, a request's
   constraints, and a task when the device restarts.
 
+### 6.18 Photos
+
+AppRuntime's `Photos` contract (Contracts/Photos.md): the user's photos
+and videos, as `MediaStore` keeps them. It needs `.photoLibrary`,
+`.addOnly` or `.readWrite`. The photo picker is the Documents contract's
+(§6.8).
+
+- **`HostPhotos` over `MediaStore`.** AppRuntime's `HostPhotos` checks
+  access, holds each fetch's identifiers, reads pages, checks a file's
+  format before it's added, and grants originals. `AndroidPhotoStore` is
+  its store, over the Kotlin `PhotoSystem`, called off the main thread.
+- **An asset** is a row of `MediaStore.Files` with a media type of image or
+  video. Its identifier is its kind and row, `image/42` or `video/7`,
+  which lasts as long as the row. Its date is `DATE_TAKEN`, else when it
+  was added; its size is upright, from `ORIENTATION`; a video has its
+  `DURATION`; a favourite is `IS_FAVORITE`, from Android 11. A fetch is
+  sorted newest first in Kotlin, since the provider's sort takes no
+  expression.
+- **An album** is a bucket: the folder its photos are in, with the folder's
+  name. Every album is the user's; Android keeps no others.
+- **Adding** writes to the shared Pictures or Movies folder, under the
+  app's name, pending until the copy is done. Android 9 writes the file
+  there itself, with `WRITE_EXTERNAL_STORAGE`.
+- **An original** is copied out of the provider to the app's cache, and
+  removed when the guest lets go of it.
+- **Deleting** the app's own photos is at once. Others go through
+  `MediaStore.createDeleteRequest`, the system's question, from Android
+  11, which deletes all or none. Before Android 11 a deletion that Android
+  refuses is `notAuthorized`.
+- **Access.** Reading is `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO`,
+  `READ_EXTERNAL_STORAGE` before Android 13. From Android 14,
+  `READ_MEDIA_VISUAL_USER_SELECTED` alone is `limited`, and the provider
+  then answers with the photos the user chose. Adding needs nothing from
+  Android 10, so an app that hasn't asked is `addOnly` there. The packager
+  declares what the level needs; the host reads the permissions again
+  when the app comes back to the front.
+- **Changes.** Once the app may read, a `ContentObserver` on the image and
+  video collections calls `HostPhotos.libraryChanged`. Not every file in
+  shared storage: any app's write changes that.
+- **The `Photo` node** is a composable the shell registers, `PhotoNode`.
+  It asks `loadThumbnail` for the node's size in pixels, off the main
+  thread, and shows the last copy drawn of the asset until that comes:
+  a grid's thumbnail is the large view's first copy. `fill` crops and
+  `fit` shows it all. An asset the app may not see draws nothing.
+- **Not tried:** Android 13 and before, limited access, a photo the app
+  added, and an original that's large.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1830,6 +1922,7 @@ props, and a few nodes need work in composeui itself:
 | `Searchable` | `NavStack`'s `searches` | The adapter lifts each level's field onto its screen |
 | `GLSurface` | `Composable`, registered by the shell | A `GraphicsView` the surface draws in (§6.3) |
 | `WebView` | `Composable`, registered by the shell | A `WebPageView` the page's `WebView` moves into (§6.4) |
+| `Photo` | `Composable`, registered by the shell | The asset's thumbnail at the node's size, from `loadThumbnail` (§6.18) |
 | `TextEditor` | `Composable`, registered by the shell | A `TextEditorView` the text's `EditText` moves into, with the font's design and the keyboard the adapter says it inherits, and its focus (§6.16) |
 | Unknown types and modifiers | `EmptyView` | Logged once per type: the vocabulary is add-only |
 
@@ -2025,6 +2118,12 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    `HostBackgroundTasks` with a scheduler over `WorkManager` (§6.17), and
    has started a guest in the background for a task, on the emulator.
    Its Android row is right that an activity is `0`.
+22. **The photos docs.** `Contracts/Photos.md` says no platform host has a
+   photo library behind it and none draws a `Photo` node; this one does,
+   on Android (§6.18). Its Android row could add three things. Albums are
+   buckets, and Android keeps no smart ones. Sorting is done by the host.
+   And a host that grants originals through `HostFiles` must keep its own
+   grants apart from any it numbers itself.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say
