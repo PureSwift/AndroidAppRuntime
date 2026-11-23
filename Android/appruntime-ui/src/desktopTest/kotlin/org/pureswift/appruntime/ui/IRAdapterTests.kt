@@ -250,6 +250,19 @@ class IRAdapterTests {
     }
 
     @Test
+    fun mapsACameraPreviewToTheShellsView() {
+        val preview = IRNode("CameraPreview", 2, mapOf("camera" to IRValue.Int(5), "scaling" to IRValue.Str("fit")))
+        val node = show(IRNode("VStack", 1, children = listOf(preview))).find("2")!!
+        assertEquals("Composable", node.type)
+        assertEquals(IRAdapter.CAMERA_PREVIEW, (node.props["name"] as JsonPrimitive).content)
+        assertEquals(5, (node.props["camera"] as JsonPrimitive).content.toInt())
+        assertEquals("fit", (node.props["scaling"] as JsonPrimitive).content)
+        assertEquals("true", (node.props["flexible"] as JsonPrimitive).content)
+        val plain = show(IRNode("VStack", 1, children = listOf(IRNode("CameraPreview", 2, mapOf("camera" to IRValue.Int(5)))))).find("2")!!
+        assertEquals("fill", (plain.props["scaling"] as JsonPrimitive).content)
+    }
+
+    @Test
     fun mapsAPhotoToTheShellsView() {
         val photo = IRNode("Photo", 2, mapOf("asset" to IRValue.Str("image/42"), "scaling" to IRValue.Str("fit")))
         val node = show(IRNode("VStack", 1, children = listOf(photo))).find("2")!!
