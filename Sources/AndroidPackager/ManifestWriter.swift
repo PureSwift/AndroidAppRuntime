@@ -116,6 +116,17 @@ public struct ManifestWriter {
                 add(Permission("android.permission.WRITE_CONTACTS"))
             }
         }
+        if capabilities.contains("photoLibrary") {
+            // Adding needs nothing from Android 10 (Plan.md §6.18).
+            add(Permission("android.permission.WRITE_EXTERNAL_STORAGE", maxSDK: 28))
+            if bundle.capabilityOptions["photoLibrary"]?["access"] != "addOnly" {
+                add(Permission("android.permission.READ_EXTERNAL_STORAGE", maxSDK: 32))
+                add(Permission("android.permission.READ_MEDIA_IMAGES"))
+                add(Permission("android.permission.READ_MEDIA_VIDEO"))
+                // The photos the user chose, from Android 14.
+                add(Permission("android.permission.READ_MEDIA_VISUAL_USER_SELECTED"))
+            }
+        }
         if capabilities.contains("nfc") {
             add(Permission("android.permission.NFC"))
         }
