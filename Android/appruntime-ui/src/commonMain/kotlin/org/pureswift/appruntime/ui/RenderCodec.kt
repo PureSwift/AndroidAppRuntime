@@ -89,6 +89,7 @@ object RenderEventKind {
     const val SUBMIT = 3
     const val POP = 4
     const val REFRESH = 5
+    const val FOCUS = 6
 }
 
 object RenderCodec {
