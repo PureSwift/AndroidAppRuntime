@@ -27,6 +27,7 @@ open class AppRuntimeApplication : Application() {
         VideoPlayerNode.register()
         TextEditorNode.register()
         PhotoNode.register()
+        CameraPreviewNode.register()
         TextSelectionNode.register()
         // A task WorkManager runs while the app is closed starts it here,
         // with no window (Documentation/Plan.md §6.17).
