@@ -4,7 +4,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import android.os.LocaleList
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -71,20 +70,7 @@ open class AppRuntimeActivity : ComponentActivity() {
         }
     }
 
-    private fun startApp(): String? {
-        val info = try {
-            assets.open("rt/Info.plist").use { it.readBytes() }
-        } catch (error: java.io.IOException) {
-            return "This APK has no assets/rt/Info.plist."
-        }
-        val result = NativeHost.start(info, languages(), AppRuntime.surface)
-        if (result.isNotEmpty()) {
-            Log.e(AppRuntime.TAG, result)
-            return result
-        }
-        AppRuntime.started = true
-        return null
-    }
+    private fun startApp(): String? = AppRuntime.start(this, background = false)
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Composable
@@ -176,10 +162,7 @@ open class AppRuntimeActivity : ComponentActivity() {
     private fun isDark(configuration: Configuration): Boolean =
         configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
 
-    private fun languages(): Array<String> {
-        val locales = LocaleList.getDefault()
-        return Array(locales.size()) { locales[it].toLanguageTag() }
-    }
+    private fun languages(): Array<String> = AppRuntime.languages()
 
     private companion object {
         // ApplicationState's raw values.
