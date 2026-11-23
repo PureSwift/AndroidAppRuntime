@@ -15,12 +15,17 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** text: an app can hold a text in an `EditText` the user types
+**Status:** background tasks: an app can ask for a task the system runs
+from time to time through `WorkManager`, and the host starts the app with
+no window to run it. AppRuntime's `ExampleBackground` runs on the
+emulator, in the background too.
+
+![ExampleBackground in the emulator](Documentation/ExampleBackground-android.png)
+
+Before that, text: an app can hold a text in an `EditText` the user types
 in, and load and save it, read and change it, find and replace in it,
 undo and redo, and give it the keyboard with `@FocusState`. AppRuntime's
 `ExampleText` runs on the emulator.
-
-![ExampleText in the emulator](Documentation/ExampleText-android.png)
 
 Before that, calendars: an app can read the user's calendars, list what
 happens in a month as Android expands it, and add, move and cancel events,
@@ -170,7 +175,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts, Calendars and Text, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts, Calendars, Text and BackgroundTasks, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -441,6 +446,28 @@ shell input`:
 - Save writes it in CRLF again;
 - typing in the note's editor reaches the app through its binding, and
   takes the keyboard from the text.
+
+Background tasks have their own check, with AppRuntime's
+`ExampleBackground` and a manifest of its own,
+`Scripts/ExampleBackground/App.swift`:
+
+```sh
+Scripts/example-background.sh [--engine wasm2c]
+```
+
+`Scripts/example-background-check.py` drives the app and has JobScheduler
+run its work with `cmd jobscheduler run -f`:
+
+- Keep Fresh asks for the task, which becomes a JobScheduler job, and
+  `WorkManager` runs it at once, with the app open;
+- with the app's process gone, and once the task's quarter of an hour is
+  up, the job starts the process with no Activity, the host starts the
+  app in the background, and the task runs; opening the app shows the
+  run. WorkManager runs periodic work no sooner, so the check takes about
+  17 minutes;
+- Stop withdraws the task, and its job goes;
+- Save Later gets no time, since Android gives none, and restricted in
+  Settings, the app says background work is off.
 
 ## Packaging
 
