@@ -145,8 +145,10 @@ import Testing
     }
 
     @Test func warnsAboutCapabilitiesItDoesntServe() throws {
-        let diagnostics = try validate(Fixtures.info(["RTCapabilities": ["camera", "location", "network"]]))
-        #expect(diagnostics.contains(.warning("the app declares camera, which the Android host doesn't serve yet; it gets the permissions only")))
+        // A capability from a newer AppRuntime.
+        let diagnostics = try validate(Fixtures.info(["RTCapabilities": ["healthData", "camera", "microphone", "location", "network"]]))
+        #expect(diagnostics.contains(.warning("the app declares healthData, which the Android host doesn't serve yet; it gets the permissions only")))
         #expect(!diagnostics.contains { $0.message.contains("declares network") || $0.message.contains("declares location") })
+        #expect(!diagnostics.contains { $0.message.contains("declares camera") || $0.message.contains("declares microphone") })
     }
 }
