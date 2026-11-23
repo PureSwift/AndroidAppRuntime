@@ -1,5 +1,6 @@
 @_exported import AndroidHost
 import AndroidHostAuthentication
+import AndroidHostBackgroundTasks
 import AndroidHostBluetooth
 import AndroidHostClipboard
 import AndroidHostDefaults
@@ -49,5 +50,6 @@ public enum AndroidHostModules {
         AndroidHostCalendars.self,
         AndroidHostText.self,
         AndroidHostAuthentication.self,
+        AndroidHostBackgroundTasks.self,
     ]
 }
