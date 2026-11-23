@@ -15,12 +15,18 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** background tasks: an app can ask for a task the system runs
+**Status:** photos: an app can browse the user's photos and videos, newest
+first and by album, show them in `Photo` views drawn from Android's
+thumbnails, open an original as a file, add photos, and delete them with
+Android's leave, through `MediaStore`. AppRuntime's `ExamplePhotos` runs on
+the emulator.
+
+![ExamplePhotos in the emulator](Documentation/ExamplePhotos-android.png)
+
+Before that, background tasks: an app can ask for a task the system runs
 from time to time through `WorkManager`, and the host starts the app with
 no window to run it. AppRuntime's `ExampleBackground` runs on the
 emulator, in the background too.
-
-![ExampleBackground in the emulator](Documentation/ExampleBackground-android.png)
 
 Before that, text: an app can hold a text in an `EditText` the user types
 in, and load and save it, read and change it, find and replace in it,
@@ -175,7 +181,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts, Calendars, Text and BackgroundTasks, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts, Calendars, Text, BackgroundTasks and Photos, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -468,6 +474,27 @@ run its work with `cmd jobscheduler run -f`:
 - Stop withdraws the task, and its job goes;
 - Save Later gets no time, since Android gives none, and restricted in
   Settings, the app says background work is off.
+
+Photos have their own check, with AppRuntime's `ExamplePhotos` and a
+manifest of its own, `Scripts/ExamplePhotos/App.swift`:
+
+```sh
+Scripts/example-photos.sh [--engine wasm2c]
+```
+
+`Scripts/example-photos-check.py` puts four photos, one colour each, and a
+screen recording on the device, and drives the app, Android's permission
+dialog and its question before deleting:
+
+- Allow asks with Android's dialog, and the app shows four of what the
+  device has, with the check's albums; More shows four more;
+- an album shows its photos newest first, drawn from their thumbnails,
+  which the check finds by their colours on the screen;
+- a photo tapped is shown large, and its original is the file itself;
+- a photo another app adds is seen, as the library says it changed;
+- Delete asks with Android's question, and the photo goes.
+
+The check removes its photos when it's done.
 
 ## Packaging
 
