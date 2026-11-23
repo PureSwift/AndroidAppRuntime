@@ -15,6 +15,7 @@ import AndroidHostModelStore
 import AndroidHostMotion
 import AndroidHostNFC
 import AndroidHostNotifications
+import AndroidHostPhotos
 import AndroidHostNetworking
 import AndroidHostSecrets
 import AndroidHostContacts
@@ -51,5 +52,6 @@ public enum AndroidHostModules {
         AndroidHostText.self,
         AndroidHostAuthentication.self,
         AndroidHostBackgroundTasks.self,
+        AndroidHostPhotos.self,
     ]
 }
