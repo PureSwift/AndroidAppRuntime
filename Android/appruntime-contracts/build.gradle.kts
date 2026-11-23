@@ -39,4 +39,7 @@ dependencies {
     api("androidx.media3:media3-ui:1.5.1")
     // What's playing, its buttons, and playing in the background (Plan.md §6.13).
     implementation("androidx.media3:media3-session:1.5.1")
+    // Background tasks the system runs, while the app is closed too (Plan.md §6.17).
+    implementation("androidx.work:work-runtime:2.10.1")
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
 }
