@@ -12,9 +12,10 @@ object NativeHost {
     /**
      * Starts the app from its `Info.plist` bytes, with `surface` for its
      * renderer: an empty string, or why it couldn't. A recreated Activity
-     * calls it again; the app keeps running.
+     * calls it again; the app keeps running. `background`: there's no
+     * window, and the app starts in the background.
      */
-    external fun start(info: ByteArray, languages: Array<String>, surface: RenderSurface?): String
+    external fun start(info: ByteArray, languages: Array<String>, surface: RenderSurface?, background: Boolean): String
 
     /** A UI event on `node`; the guest's update arrives before this returns. */
     external fun event(node: Long, kind: Int, payload: ByteArray)
