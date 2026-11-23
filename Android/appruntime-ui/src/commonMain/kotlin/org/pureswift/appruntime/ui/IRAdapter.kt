@@ -27,6 +27,8 @@ sealed interface Action {
     data class ChangeTo(val node: Long, val value: IRValue) : Action
     /** `change` with seconds since 1970, from composeui's milliseconds. */
     data class ChangeDate(val node: Long) : Action
+    /** `focus` with whether the view now has the keyboard. */
+    data class Focus(val node: Long) : Action
     /** `pop` on a `NavStack`: the levels left. */
     data class Pop(val node: Long, val levels: Int) : Action
     /** Several events in order: an alert button's `tap`, then the alert's dismissal. */
@@ -119,6 +121,15 @@ class IRAdapter(var dark: Boolean = false) {
     /** The `Refreshable` wrapping the node being converted. */
     private var refreshable: Long? = null
 
+    /**
+     * What the node being converted inherits that composeui doesn't keep:
+     * the font's design, and the keyboard's `autocorrection` and
+     * `autocapitalization`. A `TextEditor` takes them as props.
+     */
+    private data class Inherited(val design: String? = null, val autocorrects: Boolean = true, val capitalization: String? = null)
+
+    private var inherited = Inherited()
+
     /** The whole tree: a new set of callbacks, pruning the last tree's. */
     fun adaptRoot(root: IRNode): ViewNode {
         owner = Any()
@@ -160,6 +171,30 @@ class IRAdapter(var dark: Boolean = false) {
      * the platform's menu, or, when it's disabled, can't.
      */
     private fun convert(n: IRNode): ViewNode {
+        val saved = inherited
+        inherited = inherit(saved, n)
+        try {
+            return convertSelectable(n)
+        } finally {
+            inherited = saved
+        }
+    }
+
+    /** As SwiftUI's environment: the last of a kind on a node is what its subtree sees. */
+    private fun inherit(outer: Inherited, n: IRNode): Inherited {
+        var result = outer
+        for (m in n.modifiers) {
+            when (m.kind) {
+                // A font replaces the whole font, its design too.
+                "font" -> result = result.copy(design = m.args["design"].string)
+                "autocorrection" -> result = result.copy(autocorrects = m.args["disabled"].bool != true)
+                "autocapitalization" -> result = result.copy(capitalization = m.args["mode"].string)
+            }
+        }
+        return result
+    }
+
+    private fun convertSelectable(n: IRNode): ViewNode {
         val converted = convertNode(n)
         val selection = n.modifiers.lastOrNull { it.kind == "textSelection" } ?: return converted
         val name = if (selection.args["enabled"].bool != false) TEXT_SELECTION else NO_TEXT_SELECTION
@@ -193,6 +228,20 @@ class IRAdapter(var dark: Boolean = false) {
             "GLSurface" -> node("Composable", "name" to str(GL_SURFACE), "surface" to num(n["surface"].long ?: 0), "flexible" to bool(true), children = emptyList())
             // The shell registers the view a page shows in (WebPageView).
             "WebView" -> node("Composable", "name" to str(WEB_VIEW), "page" to num(n["page"].long ?: 0), "flexible" to bool(true), children = emptyList())
+            // The shell registers the view a text shows in (TextEditorView).
+            // It takes the space offered, and scrolls its own content.
+            "TextEditor" -> {
+                val focused = n.modifiers.lastOrNull { it.kind == "focused" }
+                node(
+                    "Composable", "name" to str(TEXT_EDITOR), "buffer" to num(n["buffer"].long ?: 0),
+                    "editable" to bool(n["editable"].bool ?: true), "wraps" to bool(n["wraps"].bool ?: true),
+                    "autocorrects" to bool(inherited.autocorrects), "capitalization" to inherited.capitalization?.let(::str),
+                    "design" to inherited.design?.let(::str),
+                    "focused" to focused?.let { bool(it.args["value"].bool ?: false) },
+                    "onFocus" to focused?.let { num(callback(n, "focus", Action.Focus(n.id))) },
+                    "flexible" to bool(true), children = emptyList(),
+                )
+            }
             // The shell registers the view a player shows in (PlayerView).
             // Its size is the frame the guest gives it.
             "VideoPlayer" -> node(
@@ -216,14 +265,24 @@ class IRAdapter(var dark: Boolean = false) {
             "NavigationLink" -> node("NavigationLink", "onTap" to num(callback(n, "tap", Action.Tap(n.id))))
             "Link" -> node("Link", "url" to n["url"].string?.let(::str))
             "Toggle" -> node("Toggle", "isOn" to bool(n["isOn"].bool ?: false), "onChange" to num(callback(n, "change", Action.Change(n.id))))
-            "TextField" -> node(
-                "TextField",
-                "text" to str(n["text"].string ?: ""),
-                "placeholder" to str(n["placeholder"].string ?: ""),
-                "secure" to bool(n["secure"].bool ?: false),
-                "onChange" to num(callback(n, "change", Action.Change(n.id))),
-                modifiers = mods + ModifierNode("onSubmit", obj("action" to num(callback(n, "submit", Action.Submit(n.id))))),
-            )
+            "TextField" -> {
+                // composeui's `focused`: whether to have the keyboard, and
+                // what to tell when the user moves it.
+                val focus = n.modifiers.lastOrNull { it.kind == "focused" }?.let {
+                    listOf(ModifierNode("focused", obj(
+                        "isFocused" to str((it.args["value"].bool ?: false).toString()),
+                        "onChange" to num(callback(n, "focus", Action.Focus(n.id))),
+                    )))
+                } ?: emptyList()
+                node(
+                    "TextField",
+                    "text" to str(n["text"].string ?: ""),
+                    "placeholder" to str(n["placeholder"].string ?: ""),
+                    "secure" to bool(n["secure"].bool ?: false),
+                    "onChange" to num(callback(n, "change", Action.Change(n.id))),
+                    modifiers = mods + focus + ModifierNode("onSubmit", obj("action" to num(callback(n, "submit", Action.Submit(n.id))))),
+                )
+            }
             "Slider" -> node(
                 "Slider",
                 "value" to num(n["value"].double ?: 0.0),
@@ -326,7 +385,15 @@ class IRAdapter(var dark: Boolean = false) {
             lists[n.id] = revision
             props += listOf("itemProvider" to num(n.id), "contentVersion" to num(revision))
         }
-        return ViewNode(n.type, idString(n.id), obj(*props.toTypedArray()), mods, convertAll(n.children), n.count)
+        var children = convertAll(n.children)
+        if (n.type == "HStack") {
+            // A text field takes the width its row's other views leave, as in
+            // SwiftUI; composeui's fills the row, leaving them none.
+            children = children.zip(n.children) { child, original ->
+                if (original.type == "TextField") child.copy(props = JsonObject(child.props + ("flexible" to bool(true)))) else child
+            }
+        }
+        return ViewNode(n.type, idString(n.id), obj(*props.toTypedArray()), mods, children, n.count)
     }
 
     private fun scrollView(n: IRNode, mods: List<ModifierNode>): ViewNode {
@@ -611,6 +678,9 @@ class IRAdapter(var dark: Boolean = false) {
         /** The registered composables a node with `textSelection` is in. */
         const val TEXT_SELECTION = "org.pureswift.appruntime.TextSelection"
         const val NO_TEXT_SELECTION = "org.pureswift.appruntime.NoTextSelection"
+
+        /** The registered composable a `TextEditor` node becomes. */
+        const val TEXT_EDITOR = "org.pureswift.appruntime.TextEditor"
 
         /** The registered composable a `VideoPlayer` node becomes. */
         const val VIDEO_PLAYER = "org.pureswift.appruntime.VideoPlayer"

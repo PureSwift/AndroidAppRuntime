@@ -168,6 +168,88 @@ class IRAdapterTests {
     }
 
     @Test
+    fun mapsATextEditorToTheShellsView() {
+        val editor = IRNode("TextEditor", 3, mapOf("buffer" to IRValue.Int(7), "editable" to IRValue.Bool(false), "wraps" to IRValue.Bool(false)))
+        val node = show(IRNode("VStack", 1, children = listOf(editor))).find("3")!!
+        assertEquals("Composable", node.type)
+        assertEquals(IRAdapter.TEXT_EDITOR, (node.props["name"] as JsonPrimitive).content)
+        assertEquals(7, (node.props["buffer"] as JsonPrimitive).content.toInt())
+        assertEquals("false", (node.props["editable"] as JsonPrimitive).content)
+        assertEquals("false", (node.props["wraps"] as JsonPrimitive).content)
+        assertEquals("true", (node.props["flexible"] as JsonPrimitive).content)
+        // The keyboard's way, a font without a design, and no focus.
+        assertEquals("true", (node.props["autocorrects"] as JsonPrimitive).content)
+        assertNull(node.props["capitalization"])
+        assertNull(node.props["design"])
+        assertNull(node.props["focused"])
+        assertNull(node.props["onFocus"])
+        assertEquals(emptyList(), node.children)
+        // Without its props: editable, and wrapping.
+        val plain = show(IRNode("VStack", 1, children = listOf(IRNode("TextEditor", 3, mapOf("buffer" to IRValue.Int(7)))))).find("3")!!
+        assertEquals("true", (plain.props["editable"] as JsonPrimitive).content)
+        assertEquals("true", (plain.props["wraps"] as JsonPrimitive).content)
+    }
+
+    @Test
+    fun aTextEditorInheritsItsKeyboardAndItsFontsDesign() {
+        val editor = IRNode("TextEditor", 3, mapOf("buffer" to IRValue.Int(7)),
+            listOf(IRModifier("autocapitalization", mapOf("mode" to IRValue.Str("never")))))
+        val other = IRNode("TextEditor", 4, mapOf("buffer" to IRValue.Int(8)),
+            listOf(IRModifier("font", mapOf("size" to IRValue.Dbl(14.0)))))
+        val stack = IRNode("VStack", 2, children = listOf(editor, other), modifiers = listOf(
+            IRModifier("font", mapOf("size" to IRValue.Dbl(14.0), "design" to IRValue.Str("monospaced"))),
+            IRModifier("autocorrection", mapOf("disabled" to IRValue.Bool(true))),
+        ))
+        val root = show(IRNode("VStack", 1, children = listOf(stack, IRNode("TextEditor", 5, mapOf("buffer" to IRValue.Int(9))))))
+        val inside = root.find("3")!!
+        assertEquals("monospaced", (inside.props["design"] as JsonPrimitive).content)
+        assertEquals("false", (inside.props["autocorrects"] as JsonPrimitive).content)
+        assertEquals("never", (inside.props["capitalization"] as JsonPrimitive).content)
+        // Its own font replaces the stack's, design and all.
+        val own = root.find("4")!!
+        assertNull(own.props["design"])
+        assertEquals("false", (own.props["autocorrects"] as JsonPrimitive).content)
+        assertNull(own.props["capitalization"])
+        // A sibling of the stack inherits none of it.
+        val outside = root.find("5")!!
+        assertNull(outside.props["design"])
+        assertEquals("true", (outside.props["autocorrects"] as JsonPrimitive).content)
+    }
+
+    @Test
+    fun aFocusedTextEditorReportsFocus() {
+        val editor = IRNode("TextEditor", 3, mapOf("buffer" to IRValue.Int(7)),
+            listOf(IRModifier("focused", mapOf("value" to IRValue.Bool(true)))))
+        val node = show(IRNode("VStack", 1, children = listOf(editor))).find("3")!!
+        assertEquals("true", (node.props["focused"] as JsonPrimitive).content)
+        surface.invokeBool(node.callback("onFocus"), false)
+        assertEquals(listOf(Triple(3L, RenderEventKind.FOCUS, IRValue.Bool(false) as IRValue?)), events.sent)
+        assertEquals(6, RenderEventKind.FOCUS)
+    }
+
+    @Test
+    fun textFieldsInARowShareWhatItsOtherViewsLeave() {
+        val field = IRNode("TextField", 3, mapOf("text" to IRValue.Str("")))
+        val row = show(IRNode("HStack", 2, children = listOf(field, button(4, "Find"))))
+        assertEquals("true", (row.find("3")!!.props["flexible"] as JsonPrimitive).content)
+        assertNull(row.find("4")!!.props["flexible"])
+        // In a column, a field is as tall as it is.
+        val column = show(IRNode("VStack", 1, children = listOf(field)))
+        assertNull(column.find("3")!!.props["flexible"])
+    }
+
+    @Test
+    fun aFocusedTextFieldIsComposeuisFocusedField() {
+        val field = IRNode("TextField", 3, mapOf("text" to IRValue.Str("")),
+            listOf(IRModifier("focused", mapOf("value" to IRValue.Bool(true)))))
+        val node = show(IRNode("VStack", 1, children = listOf(field))).find("3")!!
+        val focused = node.modifiers.single { it.kind == "focused" }
+        assertEquals("true", (focused.args["isFocused"] as JsonPrimitive).content)
+        surface.invokeBool((focused.args["onChange"] as JsonPrimitive).long, true)
+        assertEquals(listOf(Triple(3L, RenderEventKind.FOCUS, IRValue.Bool(true) as IRValue?)), events.sent)
+    }
+
+    @Test
     fun keepsCallbackIDsAcrossUpdates() {
         val tree = IRNode("VStack", 1, children = listOf(button(2, "+"), text(3, "0")))
         val first = show(tree)
