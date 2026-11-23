@@ -1,5 +1,6 @@
 import AndroidHost
 import AndroidHostAuthentication
+import AndroidHostBackgroundTasks
 import AndroidHostBluetooth
 import AndroidHostClipboard
 import AndroidHostDefaults
@@ -62,8 +63,10 @@ public enum AndroidHostApp {
     /// The running host, once `start` succeeded.
     nonisolated(unsafe) static var host: AppHost?
 
-    /// Starts the app: an empty string, or why it couldn't.
-    static func start(info data: [UInt8], languages: [String], surface: (any RenderSurface)?) -> String {
+    /// Starts the app: an empty string, or why it couldn't. `background`:
+    /// the system started it to run a task, with no window, and it's in the
+    /// background until an Activity shows it (§6.17).
+    static func start(info data: [UInt8], languages: [String], surface: (any RenderSurface)?, background: Bool = false) -> String {
         if host != nil {
             // A recreated Activity: the guest keeps running (§5).
             AndroidHostUI.surface = surface ?? AndroidHostUI.surface
@@ -92,6 +95,10 @@ public enum AndroidHostApp {
         if info.capabilities.contains(.calendars) {
             CalendarsBridge.configure(writeOnly: CapabilityOptions(Data(data)).value("calendars", "access") == "writeOnly")
         }
+        if info.capabilities.contains(.backgroundTasks) {
+            let entries = (try? PropertyListDecoder().decode(BackgroundTaskEntries.self, from: Data(data)))?.entries ?? []
+            AndroidHostBackgroundTasks.configure(JavaBackgroundTaskSystem(), declared: AndroidHostBackgroundTasks.declared(entries))
+        }
         AndroidHostAuthentication.configure(AndroidWebAuthenticationPresenter(system: JavaAuthenticationSystem()),
                                             schemes: CapabilityOptions.authenticationSchemes(Data(data)))
         NotificationsBridge.configure(declaresRemote: CapabilityOptions(Data(data)).value("notifications", "remote") == "true")
@@ -107,6 +114,10 @@ public enum AndroidHostApp {
             return error.description
         }
         self.host = host
+        if background {
+            // What the app's init reads, before any Activity reports.
+            HostApplication.setState(.background)
+        }
         let status = host.start(entry)
         guard status == .ok else {
             return "the app didn't start: rt_main returned \(status)"
@@ -194,8 +205,8 @@ extension NativeHost {
     /// Starts the app from its `Info.plist` bytes; an empty string, or why it
     /// couldn't. Called again by a recreated Activity, with its surface.
     @JavaMethod
-    public func start(_ info: [UInt8], _ languages: [String], _ surface: JavaRenderSurface?) -> String {
-        AndroidHostApp.start(info: info, languages: languages, surface: surface.map(SurfaceAdapter.init))
+    public func start(_ info: [UInt8], _ languages: [String], _ surface: JavaRenderSurface?, _ background: Bool) -> String {
+        AndroidHostApp.start(info: info, languages: languages, surface: surface.map(SurfaceAdapter.init), background: background)
     }
 
     /// A UI event on `node` (`RenderEventKind`).
