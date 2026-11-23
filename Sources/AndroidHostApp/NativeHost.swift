@@ -18,6 +18,7 @@ import AndroidHostNetworking
 import AndroidHostSecrets
 import AndroidHostContacts
 import AndroidHostCalendars
+import AndroidHostCamera
 import AndroidHostText
 import AndroidHostModules
 import AndroidHostUI
@@ -113,6 +114,10 @@ public enum AndroidHostApp {
         AndroidMedia.configure(AndroidMediaPlatform(system: JavaMediaSystem(), nowPlaying: JavaNowPlayingSystem()),
                                clock: host.native.runtime.clock, allowsNetwork: info.capabilities.contains(.network),
                                allowsBackground: CapabilityOptions(Data(data)).value("audio", "background") == "true")
+        if info.capabilities.contains(.camera) {
+            AndroidHostCamera.configure({ JavaCameraSystem() }, allowsMicrophone: info.capabilities.contains(.microphone),
+                                        clock: host.native.runtime.clock)
+        }
         do {
             try host.prepare()
         } catch {
@@ -242,8 +247,11 @@ extension NativeHost {
         if state == .background {
             // What doesn't play in the background pauses, and says why.
             AndroidMedia.applicationDidEnterBackground()
+            // The camera is off while the app isn't in front (§6.19).
+            AndroidHostCamera.applicationDidEnterBackground()
         }
         if state == .active {
+            AndroidHostCamera.applicationWillEnterForeground()
             AndroidHostNotifications.center?.didBecomeActive()
             // The user may have changed the contacts and calendar permissions
             // in Settings.
