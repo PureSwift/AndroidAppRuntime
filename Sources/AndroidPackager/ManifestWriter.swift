@@ -102,6 +102,10 @@ public struct ManifestWriter {
         if capabilities.contains("camera") {
             add(Permission("android.permission.CAMERA"))
         }
+        if capabilities.contains("microphone") {
+            // Sound with a video (Plan.md §6.19).
+            add(Permission("android.permission.RECORD_AUDIO"))
+        }
         if capabilities.contains("calendars") {
             // Both for either level: Android's provider reads nothing, not
             // even where to add an event, without READ_CALENDAR. The host

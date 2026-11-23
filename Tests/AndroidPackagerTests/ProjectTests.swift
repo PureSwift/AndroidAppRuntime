@@ -115,6 +115,15 @@ import Testing
         #expect(adds.permissions.map(\.maxSDK) == [28])
     }
 
+    /// The camera, and the microphone for a video's sound.
+    @Test func asksForTheCameraAndTheMicrophone() throws {
+        let camera = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["camera"]])))
+        #expect(camera.permissions.map(\.name) == ["android.permission.CAMERA"])
+        let both = ManifestWriter(bundle: try bundle(Fixtures.info(["RTCapabilities": ["camera", "microphone"]])))
+        #expect(both.permissions.map(\.name) == ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"])
+        #expect(both.features.map(\.name) == ["android.hardware.camera"])
+    }
+
     @Test func declaresTheNotificationsReceiverAndPermissions() throws {
         let plain = ManifestWriter(bundle: try bundle())
         #expect(!plain.manifest.contains("NotificationReceiver"))

@@ -15,13 +15,17 @@ an Android app:
 - the **packager**, `android-app`, which turns a universal bundle into a
   signed APK or App Bundle.
 
-**Status:** photos: an app can browse the user's photos and videos, newest
+**Status:** camera: an app can show the back or front camera's live
+preview, take photos, record video with sound, zoom and set the flash,
+through CameraX. AppRuntime's `ExampleCamera` runs on the emulator.
+
+![ExampleCamera in the emulator](Documentation/ExampleCamera-android.png)
+
+Before that, photos: an app can browse the user's photos and videos, newest
 first and by album, show them in `Photo` views drawn from Android's
 thumbnails, open an original as a file, add photos, and delete them with
 Android's leave, through `MediaStore`. AppRuntime's `ExamplePhotos` runs on
 the emulator.
-
-![ExamplePhotos in the emulator](Documentation/ExamplePhotos-android.png)
 
 Before that, background tasks: an app can ask for a task the system runs
 from time to time through `WorkManager`, and the host starts the app with
@@ -181,7 +185,7 @@ images have descriptions.
 
 The host implements AppRuntime's contract modules: Device, Formatting,
 Location, Networking, Bluetooth (the central role), Motion, NFC (the
-reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts, Calendars, Text, BackgroundTasks and Photos, and the `Permissions` built-in over
+reader role), Graphics, WebKit, Files, Defaults, ModelStore, Documents, Notifications, MediaPlayer with now playing, Clipboard, Secrets, WebAuthentication, Contacts, Calendars, Text, BackgroundTasks, Photos and Camera, and the `Permissions` built-in over
 Android's runtime permissions.
 
 ```sh
@@ -495,6 +499,27 @@ dialog and its question before deleting:
 - Delete asks with Android's question, and the photo goes.
 
 The check removes its photos when it's done.
+
+The camera has its own check, with AppRuntime's `ExampleCamera` and a
+manifest of its own, `Scripts/ExampleCamera/App.swift`:
+
+```sh
+Scripts/example-camera.sh [--engine wasm2c]
+```
+
+`Scripts/example-camera-check.py` drives the app and Android's permission
+dialogs on the emulator, whose back camera is a rendered room:
+
+- Allow asks for the camera, it comes on, and the preview shows its
+  picture;
+- Shoot writes a photo, upright, which the app adds to the user's photos;
+- Zoom and Flip work as each camera allows;
+- Record asks for the microphone and records with sound, and Stop gives an
+  MP4;
+- leaving the app during a recording keeps the video, cut short, and
+  coming back turns the camera on again.
+
+The check removes what the app saved when it's done.
 
 ## Packaging
 

@@ -5,8 +5,42 @@ armeabi-v7a ABIs on hardware. Surfaces (§6.3), web views (§6.4), files
 (§6.5), defaults (§6.6), the model store (§6.7), documents (§6.8),
 notifications (§6.9), media players (§6.10), the clipboard (§6.11),
 secrets and sign-in (§6.12), now playing (§6.13), contacts (§6.14),
-calendars (§6.15), text (§6.16), background tasks (§6.17) and the photo
-library (§6.18) came after them.
+calendars (§6.15), text (§6.16), background tasks (§6.17), the photo
+library (§6.18) and the camera (§6.19) came after them.
+
+**Camera:** AppRuntime's Camera contract. A guest turns the back or front
+camera on, shows its live preview in a `CameraPreview` node, takes photos,
+records video with sound, zooms and sets the flash.
+
+- **How:** `AndroidHostCamera` gives AppRuntime's `HostCameraCapture` an
+  `AndroidCameraPlatform` over CameraX: a preview, a photo capture and a
+  video capture bound to a lifecycle of the camera's own, shown in a
+  `PreviewView` the shell moves into the node. Access is Android's
+  `CAMERA` and `RECORD_AUDIO` (§6.19).
+- **ExampleCamera runs:** `Scripts/example-camera.sh` packages AppRuntime's
+  `ExampleCamera` with a manifest that has the camera, the microphone and
+  adding to the user's photos, and drives it on the emulator, whose back
+  camera is a rendered room and whose front camera a pattern.
+  - Allow asks with Android's dialog, the back camera comes on, and the
+    preview shows its picture.
+  - Shoot writes a photo, upright, and the app adds it to the user's
+    photos as a JPEG.
+  - Zoom keeps the back camera, which can't zoom on the emulator, at 1.
+    Flip turns the front camera on, with its flash, and Zoom doubles its
+    zoom.
+  - Record asks for the microphone, records with sound, and Stop gives an
+    MP4, which the app adds to the user's photos.
+  - Leaving the app during a recording turns the camera off and keeps the
+    video, cut short; coming back turns the camera on again.
+
+  All 27 checks pass both from the native slice and from `App.wasm`
+  through wasm2c.
+- **Unit tests:** 8 Swift tests cover the cameras and access from
+  Android's permissions, starting and failing through CameraX, zoom and a
+  pinch, a photo written where `Files` says, a recording begun and
+  finished, sound without leave, and the background. The packager's tests
+  cover the camera and the microphone, and the adapter's the
+  `CameraPreview` node.
 
 **Photos:** AppRuntime's Photos contract. A guest browses the user's photos
 and videos, newest first, a page at a time, with their albums; shows them
@@ -935,6 +969,7 @@ input.
 | `AndroidHostContacts` | `Contacts` (§6.14): AppRuntime's `HostContacts` over `AndroidContactDirectory`, which asks `ContactSystem` |
 | `AndroidHostCalendars` | `Calendars` (§6.15): AppRuntime's `HostCalendars` over `AndroidCalendarStore`, which asks `CalendarSystem` |
 | `AndroidHostBackgroundTasks` | `BackgroundTasks` (§6.17): AppRuntime's `HostBackgroundTasks` over `AndroidBackgroundScheduler`, which asks `BackgroundTaskSystem`, and `BackgroundTaskHub` for what `WorkManager` runs |
+| `AndroidHostCamera` | `CameraCapture` (§6.19): AppRuntime's `HostCameraCapture` over `AndroidCameraPlatform`, an `AndroidCameraEngine` per camera over `CameraSystem` |
 | `AndroidHostPhotos` | `Photos` (§6.18): AppRuntime's `HostPhotos` over `AndroidPhotoStore`, which asks `PhotoSystem`, with Android's media permissions as access |
 | `AndroidHostText` | `TextStorage` (§6.16): AppRuntime's `HostTextStorage` over `AndroidTextPlatform`, an `EditTextEngine` per text over `TextSystem`, with the undo history |
 | `AndroidHostSecrets` | `Secrets` (§6.12): AppRuntime's `HostSecrets` over `KeystoreSecretStore`, which asks `SecretSystem` |
@@ -949,9 +984,9 @@ The Gradle side lives in `Android/`:
 
 | Gradle module | Contents |
 |---|---|
-| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `AppRuntime.start` (the app, from an Activity or in the background), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode`, `VideoPlayerNode`, `TextEditorNode` and `PhotoNode` (the composables `GLSurface`, `WebView`, `VideoPlayer`, `TextEditor` and `Photo` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
+| `:appruntime-shell` | `AppRuntimeApplication`, `AppRuntimeActivity` (a `ComponentActivity`), `AppRuntime.start` (the app, from an Activity or in the background), `NativeHost` (the `external fun`s), `GraphicsSurface`, `WebPageNode`, `VideoPlayerNode`, `TextEditorNode`, `PhotoNode` and `CameraPreviewNode` (the composables `GLSurface`, `WebView`, `VideoPlayer`, `TextEditor`, `Photo` and `CameraPreview` nodes become), and `TextSelectionNode` (what a node with `textSelection` is in) |
 | `:appruntime-ui` | The IR adapter: `RenderCodec.kt`, `IRAdapter.kt`, `RenderSurface` (composeui's `CallbackSink`). It depends on `composeui` |
-| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`, `TextSystem` with `TextEditorView`, `BackgroundTaskSystem` with `BackgroundTaskWorker`, `PhotoSystem`), with a `…Natives` object whose natives carry what Android reports back to Swift |
+| `:appruntime-contracts` | `HostContext`, and a class per contract module that calls the Android SDK (`DeviceSystem`, `PermissionSystem`, `FormattingSystem`, `LocationSystem`, `NetworkSystem`, `BluetoothSystem`, `NfcSystem`, `GraphicsSystem` with `GraphicsView`, `WebSystem` with `WebPageView`, `FileSystem`, which also gives the model store its directory, `DefaultsSystem`, `DocumentSystem`, `MediaSystem` over Media3's `ExoPlayer`, `NowPlayingSystem` with `NowPlayingService`, `NotificationSystem` with `NotificationReceiver`, `ClipboardSystem` with `ClipboardFileProvider`, `SecretSystem`, `AuthenticationSystem` with `AuthenticationRedirectActivity`, `ContactSystem`, `CalendarSystem`, `TextSystem` with `TextEditorView`, `BackgroundTaskSystem` with `BackgroundTaskWorker`, `PhotoSystem`, `CameraSystem` with `CameraPreviewFrame`), with a `…Natives` object whose natives carry what Android reports back to Swift |
 
 The Swift package depends on AppRuntime without its `GuestExports` trait,
 like the other hosts. The slice's `rt_dispatch` and `rt_finalize` are then
@@ -1872,6 +1907,45 @@ and videos, as `MediaStore` keeps them. It needs `.photoLibrary`,
 - **Not tried:** Android 13 and before, limited access, a photo the app
   added, and an original that's large.
 
+### 6.19 Camera
+
+AppRuntime's `CameraCapture` contract (Contracts/Camera.md): a live
+preview, photos, and video with sound. It needs `.camera`; sound needs
+`.microphone` too. Saving what's taken to the user's photos is the photo
+library's (§6.18).
+
+- **`HostCameraCapture` over CameraX.** AppRuntime's `HostCameraCapture`
+  finds each file through `HostFiles`, keeps one camera on and one capture
+  of each kind, refuses sound without leave, clamps the zoom, and turns
+  the camera off in the background. `AndroidCameraPlatform` gives it an
+  `AndroidCameraEngine` per camera, over the Kotlin `CameraSystem`.
+- **A camera** is a `Preview`, an `ImageCapture` and a `VideoCapture` with
+  a `Recorder`, bound with `ProcessCameraProvider` to a `LifecycleOwner`
+  of the camera's own, resumed while it's on. The cameras the device has
+  are `CameraManager`'s, by `LENS_FACING`. Its zoom range is the camera's
+  `ZoomState`, and its flash `hasFlashUnit`.
+- **A photo** is `ImageCapture.takePicture` to the file, with the
+  display's rotation, so its EXIF orientation shows it upright. Its size
+  is the upright picture's, from the file.
+- **A video** is the `Recorder`'s MP4, H.264 and AAC, with sound where the
+  guest asked and was allowed. A `Finalize` with an error keeps the file
+  and says why: no space is `writeFailed`, the camera going away
+  `interrupted`.
+- **The preview** is a `PreviewView`, made with the camera and moved into
+  a `CameraPreviewFrame` where a `CameraPreview` node names it, as a web
+  page's view is (§6.4). A TextureView, so Compose and screenshots show
+  it. It mirrors the front camera; files aren't. A tap starts
+  `startFocusAndMetering` there, and a pinch sets the zoom and tells the
+  guest.
+- **The background.** When the app leaves the front the host tells
+  `HostCameraCapture`, which ends a recording and turns the camera off,
+  and turns it on again when the app comes back.
+- **Access** is `CAMERA`, and `RECORD_AUDIO` for sound. The packager
+  declares `RECORD_AUDIO` for `.microphone`.
+- **Not tried:** a capture to a document the user picked, which has no
+  path (`writeFailed`); the system taking the camera; an external camera;
+  and a device.
+
 ## 7. The SwiftUI player
 
 ### 7.1 Data flow
@@ -1922,6 +1996,7 @@ props, and a few nodes need work in composeui itself:
 | `Searchable` | `NavStack`'s `searches` | The adapter lifts each level's field onto its screen |
 | `GLSurface` | `Composable`, registered by the shell | A `GraphicsView` the surface draws in (§6.3) |
 | `WebView` | `Composable`, registered by the shell | A `WebPageView` the page's `WebView` moves into (§6.4) |
+| `CameraPreview` | `Composable`, registered by the shell | A `CameraPreviewFrame` the camera's `PreviewView` moves into, with a tap to focus and a pinch to zoom (§6.19) |
 | `Photo` | `Composable`, registered by the shell | The asset's thumbnail at the node's size, from `loadThumbnail` (§6.18) |
 | `TextEditor` | `Composable`, registered by the shell | A `TextEditorView` the text's `EditText` moves into, with the font's design and the keyboard the adapter says it inherits, and its focus (§6.16) |
 | Unknown types and modifiers | `EmptyView` | Logged once per type: the vocabulary is add-only |
@@ -2124,6 +2199,10 @@ Swift, which keeps apps and hosts versioned independently (§7.5).
    buckets, and Android keeps no smart ones. Sorting is done by the host.
    And a host that grants originals through `HostFiles` must keep its own
    grants apart from any it numbers itself.
+23. **The camera docs.** `Contracts/Camera.md` says no platform host has a
+   camera behind it and none shows a `CameraPreview` node; this one does,
+   on Android (§6.19). Its last item is right for Android: a document the
+   user picked has no path, so a capture can't be written to one.
 8. **The web docs.** `Contracts/WebKit.md` says no host implements
    `WebContent` yet, and that no real engine has loaded a page for
    ExampleWeb. This one does now (§6.4). Its Android row could also say

@@ -242,6 +242,12 @@ class IRAdapter(var dark: Boolean = false) {
                     "flexible" to bool(true), children = emptyList(),
                 )
             }
+            // The shell registers the view a camera's preview shows in
+            // (CameraPreviewFrame). It takes the space offered.
+            "CameraPreview" -> node(
+                "Composable", "name" to str(CAMERA_PREVIEW), "camera" to num(n["camera"].long ?: 0),
+                "scaling" to str(n["scaling"].string ?: "fill"), "flexible" to bool(true), children = emptyList(),
+            )
             // The shell registers what draws a photo from the system's
             // thumbnails. Like the web view, it takes the space offered.
             "Photo" -> node(
@@ -687,6 +693,9 @@ class IRAdapter(var dark: Boolean = false) {
 
         /** The registered composable a `TextEditor` node becomes. */
         const val TEXT_EDITOR = "org.pureswift.appruntime.TextEditor"
+
+        /** The registered composable a `CameraPreview` node becomes. */
+        const val CAMERA_PREVIEW = "org.pureswift.appruntime.CameraPreview"
 
         /** The registered composable a `Photo` node becomes. */
         const val PHOTO = "org.pureswift.appruntime.Photo"

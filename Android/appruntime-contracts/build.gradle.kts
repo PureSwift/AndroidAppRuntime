@@ -42,4 +42,9 @@ dependencies {
     // Background tasks the system runs, while the app is closed too (Plan.md §6.17).
     implementation("androidx.work:work-runtime:2.10.1")
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
+    // The camera's preview, photos and video (Plan.md §6.19).
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-video:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
 }
